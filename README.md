@@ -32,7 +32,6 @@ cargo install --path cyrene
 Plugins are installed into `$HOME/.local/share/cyrene/plugins` (configurable with the `CYRENE_PLUGINS_DIR` environment variable).
 Apps installed using `cyrene` are located in `$HOME/.local/share/cyrene/apps` (configurable with the `CYRENE_APPS_DIR` environment variable).
 
-
 ```sh
 # Install multiple versions of runtimes...
 cyrene install node 22
@@ -41,12 +40,25 @@ cyrene install node 20
 cyrene link node 20
 # Upgrades are per major version
 cyrene upgrade node 22
-# Uninstall
+# Uninstall every Node version
 cyrene uninstall node
+# Lockfile example
+cat << EOF > cyrene.toml
+[versions]
+node = "20.19.5"
+EOF
+cyrene load
+# Load default lockfile
+cyrene load -d
 ```
 
 
 ## Configuration
+
+Cyrene is currently configured with environment variables:
+* `CYRENE_APPS_DIR`: Location of installed binaries
+* `CYRENE_PLUGINS_DIR`: Location of installed plugins
+The default lockfile is located at `$HOME/.config/cyrene/cyrene.toml`. Per-project lockfiles are configured using the current directory's `cyrene.toml` file.
 
 ## Contributing
 
