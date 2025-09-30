@@ -13,6 +13,8 @@ Conjure upon ripples of past reverie to run multiple versions of runtimes and to
 
 cyrene should depend only on libc.
 
+A set of plugins are available in the [cyrene-plugins](https://github.com/Damillora/cyrene-plugins) repository.
+
 ### From releases
 
 Grab the latest binary from the [Releases](https://github.com/Damillora/cyrene/releases) page.
@@ -28,9 +30,6 @@ cargo install --path cyrene
 ```
 
 ## Usage
-
-Plugins are installed into `$HOME/.local/share/cyrene/plugins` (configurable with the `CYRENE_PLUGINS_DIR` environment variable).
-Apps installed using `cyrene` are located in `$HOME/.local/share/cyrene/apps` (configurable with the `CYRENE_APPS_DIR` environment variable).
 
 ```sh
 # Install multiple versions of runtimes...
