@@ -18,6 +18,7 @@ inquire = "0.9.1"
 log = "0.4.28"
 reqwest = { version = "0.12.23", default-features = false, features = ["blocking", "rustls-tls","json"] }
 rune = "0.14.1"
+rune-modules = { version = "0.14.1", features = ["http", "json"] }
 semver = "1.0.27"
 serde = { version = "1.0.228", features = ["derive"] }
 shlex = "1.3.0"

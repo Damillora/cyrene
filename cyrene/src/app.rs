@@ -10,7 +10,7 @@ use semver::Version;
 use crate::{
     app_module::{
         env::{self, CyreneEnv},
-        sources, versions,
+        modify, sources, strings, versions,
     },
     errors::CyreneError,
 };
@@ -31,6 +31,10 @@ impl CyreneApp {
         context.install(versions::module()?)?;
         context.install(sources::module()?)?;
         context.install(env::module()?)?;
+        context.install(modify::module()?)?;
+        context.install(strings::module()?)?;
+        context.install(rune_modules::http::module(true)?)?;
+        context.install(rune_modules::json::module(true)?)?;
 
         let runtime = Arc::new(context.runtime()?);
         let mut sources = Sources::new();
@@ -65,12 +69,13 @@ impl CyreneApp {
     pub fn get_versions(&mut self) -> Result<Vec<String>, CyreneError> {
         let output = self.script_vm.call(["get_versions"], ())?;
         let output: Vec<String> = rune::from_value(output)?;
-        let mut output: Vec<String> = output;
-        output.sort_by(|a, b| {
-            let a = Version::parse(a).unwrap();
-            let b = Version::parse(b).unwrap();
-            b.cmp(&a)
-        });
+        let mut output: Vec<_> = output
+            .iter()
+            .map(|a| a.trim_start_matches("v"))
+            .filter_map(|a| Version::parse(a).ok())
+            .collect();
+        output.sort_by(|a, b| b.cmp(&a));
+        let output: Vec<String> = output.iter().map(|a| a.to_string()).collect();
 
         Ok(output)
     }

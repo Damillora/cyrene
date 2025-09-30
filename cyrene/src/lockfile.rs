@@ -2,13 +2,19 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use serde::{Deserialize, Serialize};
 
-use crate::errors::CyreneError;
+use crate::{errors::CyreneError, responses::CyreneAppItem};
 
 #[derive(Serialize, Deserialize)]
 pub struct CyreneLockfile {
     pub versions: BTreeMap<String, String>,
 }
-
+pub fn load_lockfile(lockfile_path: &Path) -> Result<Vec<CyreneAppItem>, CyreneError> {
+    if !fs::exists(&lockfile_path)? {
+        Err(CyreneError::LockfileNotFoundError)
+    } else {
+        Ok(Vec::new())
+    }
+}
 pub fn get_current_version_from_lockfile(
     lockfile_path: &Path,
     name: &str,

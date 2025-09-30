@@ -117,7 +117,7 @@ fn main() -> Result<(), CyreneError> {
         Commands::Install(app_install_opts) => {
             if let Some(ver) = &app_install_opts.version {
                 if Version::parse(ver).is_ok() {
-                    actions.install(&app_install_opts.name, Some(&ver))?;
+                    actions.install(&app_install_opts.name, &ver)?;
                 } else {
                     let get_release = actions
                         .find_installed_major_release(&app_install_opts.name, ver.as_str())?;
@@ -149,13 +149,35 @@ fn main() -> Result<(), CyreneError> {
                     .prompt();
 
                     match ans {
-                        Ok(true) => actions.install(&app_install_opts.name, Some(&get_release))?,
+                        Ok(true) => actions.install(&app_install_opts.name, &get_release)?,
                         Ok(false) => println!("Aborted"),
                         Err(_) => println!("Cannot confirm or deny uninstallation"),
                     }
                 }
             } else {
-                actions.install(&app_install_opts.name, None)?;
+                let latest_release = actions.get_latest_version(&app_install_opts.name)?;
+                if actions.package_exists(&app_install_opts.name, latest_release.as_str())? {
+                    println!(
+                        "Latest {} version {} is installed",
+                        &app_install_opts.name, latest_release
+                    );
+                    return Ok(());
+                }
+                let ans = Confirm::new(
+                    format!(
+                        "You are going to install {} version {}. Are you sure?",
+                        app_install_opts.name, latest_release,
+                    )
+                    .as_str(),
+                )
+                .with_default(false)
+                .prompt();
+
+                match ans {
+                    Ok(true) => actions.install(&app_install_opts.name, &latest_release)?,
+                    Ok(false) => println!("Aborted"),
+                    Err(_) => println!("Cannot confirm or deny uninstallation"),
+                }
             }
             Ok(())
         }
@@ -173,7 +195,7 @@ fn main() -> Result<(), CyreneError> {
             if let Some(version) = version {
                 actions.link_binaries(&app_install_opts.name, &version, true)?;
             } else {
-                return Err(CyreneError::NoAppError);
+                return Err(CyreneError::AppVersionNotInstalledError);
             }
             Ok(())
         }
@@ -218,7 +240,7 @@ fn main() -> Result<(), CyreneError> {
                         Err(_) => println!("Cannot confirm or deny uninstallation"),
                     }
                 } else {
-                    return Err(CyreneError::NoAppError);
+                    return Err(CyreneError::AppVersionNotInstalledError);
                 }
                 Ok(())
             }
@@ -310,7 +332,7 @@ fn app_upgrade(
                     Err(_) => println!("Cannot confirm or deny uninstallation"),
                 }
             } else {
-                return Err(CyreneError::NoAppError);
+                return Err(CyreneError::AppVersionNotInstalledError);
             }
             Ok(())
         }

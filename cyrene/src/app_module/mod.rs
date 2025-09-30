@@ -1,6 +1,10 @@
 /// Env module
 pub mod env;
+/// Modify module
+pub mod modify;
 /// Sources module
 pub mod sources;
+/// Strings module;
+pub mod strings;
 /// Versions module
 pub mod versions;

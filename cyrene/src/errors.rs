@@ -8,7 +8,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum CyreneError {
-    #[error("FS error")]
+    #[error("IO error")]
     FsError(#[from] std::io::Error),
     #[error("Cannot create context")]
     RuneContextError(#[from] ContextError),
@@ -26,10 +26,12 @@ pub enum CyreneError {
     RuneAllocError(#[from] rune::alloc::Error),
     #[error("Cannot find cyrene configuration")]
     NoHomeError,
-    #[error("Cannot find app")]
-    NoAppError,
-    #[error("Something is wrong with versioning")]
-    VersioningError,
+    #[error("App is not installed")]
+    AppVersionNotInstalledError,
+    #[error("App not registered in lockfile")]
+    AppVersionNotInLockfileError,
+    #[error("Cannot find app version in version list")]
+    AppVersionNotFoundError,
     #[error("Error parsing versions")]
     VersionError(#[from] semver::Error),
     #[error("Cannot locate cyrene")]
@@ -38,10 +40,10 @@ pub enum CyreneError {
     PluginPathError,
     #[error("Cannot query the web")]
     HttpError(#[from] reqwest::Error),
-    #[error("Cannot read lockfile")]
+    #[error("Lockfile is malformed")]
     LockfileReadError(#[from] toml::de::Error),
-    #[error("Cannot read lockfile correctly")]
-    LockfileError,
+    #[error("Cannot find lockfile")]
+    LockfileNotFoundError,
     #[error("Cannot write lockfile")]
     LockfileWriteError(#[from] toml::ser::Error),
 }
