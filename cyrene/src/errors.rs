@@ -46,6 +46,8 @@ pub enum CyreneError {
     LockfileReadError(#[from] toml::de::Error),
     #[error("Cannot find lockfile")]
     LockfileNotFoundError,
+    #[error("App in lockfile is invalid")]
+    LockfileAppVersionError,
     #[error("Cannot write lockfile")]
     LockfileWriteError(#[from] toml::ser::Error),
 }

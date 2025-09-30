@@ -6,7 +6,7 @@ Conjure upon ripples of past reverie to run multiple versions of runtimes and to
 
 * Install and upgrade multiple versions of tools
 * Symlink-based version management
-* Extensible with scripts written in Rune
+* Extensible with scripts written in [Rune](https://rune-rs.github.io/)
 * Synchronize tool versions with `cyrene.toml` lockfiles
 
 ## Installation
@@ -30,6 +30,8 @@ cargo install --path cyrene
 ## Usage
 
 Plugins are installed into `$HOME/.local/share/cyrene/plugins` (configurable with the `CYRENE_PLUGINS_DIR` environment variable).
+Apps installed using `cyrene` are located in `$HOME/.local/share/cyrene/apps` (configurable with the `CYRENE_APPS_DIR` environment variable).
+
 
 ```sh
 # Install multiple versions of runtimes...

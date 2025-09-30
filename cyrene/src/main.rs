@@ -1,3 +1,5 @@
+use std::{fs, path::PathBuf};
+
 use clap::{Args, Parser, Subcommand, command};
 use directories::ProjectDirs;
 use inquire::Confirm;
@@ -50,6 +52,8 @@ pub enum Commands {
     Versions(AppVersionsOpts),
     /// Refresh versions of a binary
     Refresh(AppRefreshOpts),
+    /// Load cyrene.toml lockfiles in a directory
+    Load(AppLoadOpts),
 }
 
 #[derive(Args)]
@@ -104,6 +108,14 @@ pub struct AppVersionsOpts {
 pub struct AppRefreshOpts {
     /// Name of app
     name: String,
+}
+#[derive(Args)]
+pub struct AppLoadOpts {
+    /// Custom path to lockfile
+    lockfile: Option<String>,
+    /// Use default lockfile
+    #[arg(short = 'd', long)]
+    default: bool,
 }
 fn main() -> Result<(), ErrReport> {
     start().into_diagnostic()?;
@@ -198,7 +210,7 @@ fn start() -> Result<(), CyreneError> {
                 get_release
             };
             if let Some(version) = version {
-                actions.link_binaries(&app_install_opts.name, &version, true)?;
+                actions.link_binaries(&app_install_opts.name, &version, true, true)?;
             } else {
                 return Err(CyreneError::AppVersionNotInstalledError);
             }
@@ -287,6 +299,24 @@ fn start() -> Result<(), CyreneError> {
                 .collect();
 
             tables::cyrene_app_versions(&versions, app_version_opts.long);
+
+            Ok(())
+        }
+        Commands::Load(app_load_opts) => {
+            if app_load_opts.default {
+                actions.load_lockfile(None)?;
+            } else {
+                let lockfile_path = if let Some(path) = app_load_opts.lockfile {
+                    PathBuf::from(path)
+                } else {
+                    PathBuf::from("cyrene.toml")
+                };
+                if !fs::exists(&lockfile_path)? {
+                    return Err(CyreneError::LockfileNotFoundError);
+                }
+
+                actions.load_lockfile(Some(&lockfile_path))?;
+            }
 
             Ok(())
         }

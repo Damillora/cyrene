@@ -1,11 +1,18 @@
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use directories::ProjectDirs;
 use log::debug;
 use semver::{Version, VersionReq};
 
 use crate::{
-    app::CyreneApp, errors::CyreneError, lockfile, responses::CyreneAppItem, versions_cache,
+    app::CyreneApp,
+    errors::CyreneError,
+    lockfile::{self, use_default_lockfile, use_local_lockfile},
+    responses::CyreneAppItem,
+    versions_cache::{self, get_versions},
 };
 
 pub struct CyreneManager {
@@ -128,7 +135,7 @@ impl CyreneManager {
     }
     pub fn install(&self, name: &str, version: &str) -> Result<(), CyreneError> {
         self.install_specific_version(name, version)?;
-        self.link_binaries(name, version, false)?;
+        self.link_binaries(name, version, false, true)?;
 
         Ok(())
     }
@@ -166,6 +173,7 @@ impl CyreneManager {
         name: &str,
         version: &str,
         overwrite: bool,
+        update_lockfile: bool,
     ) -> Result<(), CyreneError> {
         let plugin_path = self.get_plugin_script(name);
         let mut cyrene_app = CyreneApp::new(&plugin_path)?;
@@ -218,8 +226,10 @@ impl CyreneManager {
             println!();
             println!("    cyrene link {} {}", cyrene_app.app_name(), version);
         } else {
-            let lockfile = self.lockfile_path();
-            lockfile::update_lockfile(&lockfile, name, version)?;
+            if update_lockfile {
+                let lockfile = self.lockfile_path();
+                lockfile::update_lockfile(&lockfile, name, version)?;
+            }
         }
         Ok(())
     }
@@ -319,7 +329,7 @@ impl CyreneManager {
         if uninstalled_is_linked_version {
             let get_release = self.find_installed_major_release(name, "*")?;
             if let Some(get_release) = get_release {
-                self.link_binaries(name, &get_release, true)?;
+                self.link_binaries(name, &get_release, true, true)?;
             }
         }
 
@@ -354,7 +364,7 @@ impl CyreneManager {
         let current_installed = self.get_current_version(name)?;
         let overwrite_installed = current_installed.eq(old_version);
         self.install_specific_version(name, new_version)?;
-        self.link_binaries(name, new_version, overwrite_installed)?;
+        self.link_binaries(name, new_version, overwrite_installed, true)?;
         self.uninstall(name, old_version)?;
 
         Ok(())
@@ -392,6 +402,12 @@ impl CyreneManager {
             .to_string())
     }
 
+    pub fn verify_version_exists(&self, name: &str, version: &str) -> Result<bool, CyreneError> {
+        let versions = self.versions(name)?;
+
+        Ok(versions.iter().any(|f| f.eq(&version)))
+    }
+
     pub fn get_all_apps(&self) -> Result<Vec<CyreneAppItem>, CyreneError> {
         let installation_root = self.apps_dir.clone();
         let list_dirs = fs::read_dir(installation_root)?;
@@ -425,5 +441,31 @@ impl CyreneManager {
             .flatten()
             .collect();
         Ok(apps)
+    }
+
+    pub fn load_lockfile(&self, loaded_lockfile: Option<&Path>) -> Result<(), CyreneError> {
+        let default_lockfile = self.lockfile_path();
+        match &loaded_lockfile {
+            Some(loaded_lockfile) => use_local_lockfile(&default_lockfile, &loaded_lockfile)?,
+            None => use_default_lockfile(&default_lockfile)?,
+        };
+        let lockfile_items = lockfile::load_versions_from_lockfile(&default_lockfile)?;
+        if lockfile_items
+            .iter()
+            .any(|h| match self.verify_version_exists(&h.name, &h.version) {
+                Ok(t) => !t,
+                Err(_) => true,
+            })
+        {
+            return Err(CyreneError::LockfileAppVersionError);
+        }
+        for lockfile_item in lockfile_items {
+            if !self.package_exists(&lockfile_item.name, &lockfile_item.version)? {
+                self.install_specific_version(&lockfile_item.name, &lockfile_item.version)?;
+            }
+            self.link_binaries(&lockfile_item.name, &lockfile_item.version, true, false)?;
+        }
+
+        Ok(())
     }
 }
