@@ -16,6 +16,7 @@ env_logger = "0.11.8"
 flate2 = "1.1.2"
 inquire = "0.9.1"
 log = "0.4.28"
+miette = { version = "7.6.0", features = ["fancy"] }
 reqwest = { version = "0.12.23", default-features = false, features = ["blocking", "rustls-tls","json"] }
 rune = "0.14.1"
 rune-modules = { version = "0.14.1", features = ["http", "json"] }

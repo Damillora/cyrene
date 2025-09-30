@@ -1,6 +1,7 @@
 use clap::{Args, Parser, Subcommand, command};
 use directories::ProjectDirs;
 use inquire::Confirm;
+use miette::{ErrReport, IntoDiagnostic};
 use semver::Version;
 
 use crate::{errors::CyreneError, manager::CyreneManager, tables::CyreneAppVersionsRow};
@@ -104,8 +105,12 @@ pub struct AppRefreshOpts {
     /// Name of app
     name: String,
 }
+fn main() -> Result<(), ErrReport> {
+    start().into_diagnostic()?;
 
-fn main() -> Result<(), CyreneError> {
+    Ok(())
+}
+fn start() -> Result<(), CyreneError> {
     env_logger::init();
     let cli = Cli::parse();
     let proj_dirs =

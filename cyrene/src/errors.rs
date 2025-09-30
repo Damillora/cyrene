@@ -6,7 +6,9 @@ use rune::{
 };
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+use miette::Diagnostic;
+
+#[derive(Error, Diagnostic, Debug)]
 pub enum CyreneError {
     #[error("IO error")]
     FsError(#[from] std::io::Error),
