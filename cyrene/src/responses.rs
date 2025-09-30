@@ -1,7 +1,4 @@
-use versions::Versioning;
-
-#[derive(Clone)]
-pub struct CyreneAppVersions {
+pub struct CyreneAppItem {
     pub name: String,
-    pub version: Versioning,
+    pub version: String,
 }

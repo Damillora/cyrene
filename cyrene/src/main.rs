@@ -1,10 +1,9 @@
-use std::path::PathBuf;
-
 use clap::{Args, Parser, Subcommand, command};
 use directories::ProjectDirs;
 use inquire::Confirm;
+use semver::Version;
 
-use crate::{errors::CyreneError, manager::CyreneManager};
+use crate::{errors::CyreneError, manager::CyreneManager, tables::CyreneAppVersionsRow};
 /// Cyrene app definition
 pub mod app;
 /// Modules used by Cyrene app scripts
@@ -21,6 +20,8 @@ pub mod responses;
 pub mod tables;
 /// Various Cyrene utilities
 pub mod util;
+/// Cyrene version caching
+pub mod versions_cache;
 
 /// Manage your installed binaries
 #[derive(Parser)]
@@ -35,21 +36,37 @@ pub enum Commands {
     /// Install binaries
     Install(AppInstallOpts),
     /// Upgrade binaries
-    Upgrade(AppInstallOpts),
+    Upgrade(AppUpgradeOpts),
     /// Link installed binaries
     Link(AppLinkOpts),
     /// Unlink installed binaries
     Unlink(AppUnlinkOpts),
     /// Uninstall binaries
-    Uninstall(AppInstallOpts),
+    Uninstall(AppUninstallOpts),
     /// List installed binaries
-    List,
+    List(AppListOpts),
     /// List versions of a binary
     Versions(AppVersionsOpts),
+    /// Refresh versions of a binary
+    Refresh(AppRefreshOpts),
 }
 
 #[derive(Args)]
 pub struct AppInstallOpts {
+    /// Name of app
+    name: String,
+    /// Version of app
+    version: Option<String>,
+}
+#[derive(Args)]
+pub struct AppUpgradeOpts {
+    /// Name of app
+    name: String,
+    /// Version of app
+    version: Option<String>,
+}
+#[derive(Args)]
+pub struct AppUninstallOpts {
     /// Name of app
     name: String,
     /// Version of app
@@ -69,12 +86,23 @@ pub struct AppUnlinkOpts {
 }
 
 #[derive(Args)]
+pub struct AppListOpts {
+    /// Long format
+    #[arg(short = 'l', long)]
+    long: bool,
+}
+#[derive(Args)]
 pub struct AppVersionsOpts {
     /// Name of app
     name: String,
     /// Long format
     #[arg(short = 'l', long)]
     long: bool,
+}
+#[derive(Args)]
+pub struct AppRefreshOpts {
+    /// Name of app
+    name: String,
 }
 
 fn main() -> Result<(), CyreneError> {
@@ -87,34 +115,33 @@ fn main() -> Result<(), CyreneError> {
 
     match cli.command {
         Commands::Install(app_install_opts) => {
-            actions.install(&app_install_opts.name, app_install_opts.version.as_deref())?;
-            Ok(())
-        }
-        Commands::Link(app_install_opts) => {
-            actions.link_binaries(&app_install_opts.name, &app_install_opts.version, true)?;
-            Ok(())
-        }
-        Commands::Unlink(app_install_opts) => {
-            actions.unlink_binaries(&app_install_opts.name)?;
-            Ok(())
-        }
-        Commands::Upgrade(app_install_opts) => match app_install_opts.version {
-            Some(version) => {
-                if actions.package_exists(&app_install_opts.name, version.as_str())? {
-                    let old_version = version.as_str();
-                    let new_version =
-                        actions.get_latest_version_major(&app_install_opts.name, old_version)?;
-                    if util::is_version_equal(old_version, &new_version) {
-                        println!(
-                            "{} is at latest version {}",
-                            &app_install_opts.name, new_version
-                        );
+            if let Some(ver) = &app_install_opts.version {
+                if Version::parse(ver).is_ok() {
+                    actions.install(&app_install_opts.name, Some(&ver))?;
+                } else {
+                    let get_release = actions
+                        .find_installed_major_release(&app_install_opts.name, ver.as_str())?;
+
+                    if let Some(get_release) = get_release
+                        && actions.package_exists(&app_install_opts.name, get_release.as_str())?
+                    {
+                        app_upgrade(
+                            &actions,
+                            &AppUpgradeOpts {
+                                name: app_install_opts.name,
+                                version: app_install_opts.version,
+                            },
+                        )?;
                         return Ok(());
                     }
+
+                    // Install latest in version req
+                    let get_release =
+                        actions.get_latest_major_release(&app_install_opts.name, ver.as_str())?;
                     let ans = Confirm::new(
                         format!(
-                            "You are going to upgrade {} version {} to {}. Are you sure?",
-                            app_install_opts.name, old_version, new_version
+                            "You are going to install {} version {}. Are you sure?",
+                            app_install_opts.name, get_release
                         )
                         .as_str(),
                     )
@@ -122,52 +149,59 @@ fn main() -> Result<(), CyreneError> {
                     .prompt();
 
                     match ans {
-                        Ok(true) => {
-                            actions.upgrade(&app_install_opts.name, &old_version, &new_version)?
-                        }
+                        Ok(true) => actions.install(&app_install_opts.name, Some(&get_release))?,
                         Ok(false) => println!("Aborted"),
                         Err(_) => println!("Cannot confirm or deny uninstallation"),
                     }
-                } else {
-                    return Err(CyreneError::NoAppError);
                 }
-                Ok(())
+            } else {
+                actions.install(&app_install_opts.name, None)?;
             }
-            None => {
-                let old_version = actions.get_current_version(&app_install_opts.name)?;
-                let new_version =
-                    actions.get_latest_version_major(&app_install_opts.name, &old_version)?;
-                if util::is_version_equal(&old_version, &new_version) {
-                    println!(
-                        "{} is at latest version {}",
-                        &app_install_opts.name, new_version
-                    );
-                    return Ok(());
-                }
-                let ans = Confirm::new(
-                    format!(
-                        "You are going to upgrade {} version {} to {}. Are you sure?",
-                        app_install_opts.name, old_version, new_version
-                    )
-                    .as_str(),
-                )
-                .with_default(false)
-                .prompt();
+            Ok(())
+        }
+        Commands::Link(app_install_opts) => {
+            let version = if Version::parse(&app_install_opts.version).is_ok() {
+                Some(app_install_opts.version)
+            } else {
+                let get_release = actions.find_installed_major_release(
+                    &app_install_opts.name,
+                    &app_install_opts.version.as_str(),
+                )?;
 
-                match ans {
-                    Ok(true) => {
-                        actions.upgrade(&app_install_opts.name, &old_version, &new_version)?
-                    }
-                    Ok(false) => println!("Aborted"),
-                    Err(_) => println!("Cannot confirm or deny uninstallation"),
-                }
-
-                Ok(())
+                get_release
+            };
+            if let Some(version) = version {
+                actions.link_binaries(&app_install_opts.name, &version, true)?;
+            } else {
+                return Err(CyreneError::NoAppError);
             }
-        },
+            Ok(())
+        }
+        Commands::Unlink(app_install_opts) => {
+            actions.unlink_binaries(&app_install_opts.name)?;
+            Ok(())
+        }
+        Commands::Refresh(app_version_opts) => {
+            println!(
+                "Updating versions database for {}...",
+                &app_version_opts.name
+            );
+            actions.update_versions(&app_version_opts.name)
+        }
+        Commands::Upgrade(app_install_opts) => app_upgrade(&actions, &app_install_opts),
         Commands::Uninstall(app_install_opts) => match app_install_opts.version {
             Some(version) => {
-                if actions.package_exists(&app_install_opts.name, version.as_str())? {
+                let version = if Version::parse(&version).is_ok() {
+                    Some(version)
+                } else {
+                    let get_release = actions
+                        .find_installed_major_release(&app_install_opts.name, version.as_str())?;
+
+                    get_release
+                };
+                if let Some(version) = version
+                    && actions.package_exists(&app_install_opts.name, version.as_str())?
+                {
                     let ans = Confirm::new(
                         format!(
                             "You are going to uninstall {} version {}. Are you sure?",
@@ -207,11 +241,110 @@ fn main() -> Result<(), CyreneError> {
                 Ok(())
             }
         },
-        Commands::List => actions.list(),
+        Commands::List(app_version_opts) => {
+            let apps: Vec<_> = actions
+                .list()?
+                .iter()
+                .map(CyreneAppVersionsRow::from)
+                .collect();
+
+            tables::cyrene_app_versions_all(&apps, app_version_opts.long);
+
+            Ok(())
+        }
         Commands::Versions(app_version_opts) => {
-            let versions = actions.versions(&app_version_opts.name)?;
+            let versions: Vec<(String, String)> = actions
+                .versions(&app_version_opts.name)?
+                .iter()
+                .map(|f| (app_version_opts.name.clone(), f.to_string()))
+                .collect();
 
             tables::cyrene_app_versions(&versions, app_version_opts.long);
+
+            Ok(())
+        }
+    }
+}
+
+fn app_upgrade(
+    actions: &CyreneManager,
+    app_install_opts: &AppUpgradeOpts,
+) -> Result<(), CyreneError> {
+    match &app_install_opts.version {
+        Some(version) => {
+            let get_release =
+                actions.find_installed_major_release(&app_install_opts.name, version.as_str())?;
+            if let Some(get_release) = get_release
+                && actions.package_exists(&app_install_opts.name, get_release.as_str())?
+            {
+                println!(
+                    "Updating versions database for {}...",
+                    &app_install_opts.name
+                );
+                actions.update_versions(&app_install_opts.name)?;
+                let old_version = get_release.as_str();
+                let new_version =
+                    actions.get_latest_major_release(&app_install_opts.name, old_version)?;
+                if util::is_version_equal(old_version, &new_version)? {
+                    println!(
+                        "{} is at latest version {}",
+                        &app_install_opts.name, new_version
+                    );
+                    return Ok(());
+                }
+                let ans = Confirm::new(
+                    format!(
+                        "You are going to upgrade {} version {} to {}. Are you sure?",
+                        app_install_opts.name, old_version, new_version
+                    )
+                    .as_str(),
+                )
+                .with_default(false)
+                .prompt();
+
+                match ans {
+                    Ok(true) => {
+                        actions.upgrade(&app_install_opts.name, &old_version, &new_version)?
+                    }
+                    Ok(false) => println!("Aborted"),
+                    Err(_) => println!("Cannot confirm or deny uninstallation"),
+                }
+            } else {
+                return Err(CyreneError::NoAppError);
+            }
+            Ok(())
+        }
+        None => {
+            println!(
+                "Updating versions database for {}...",
+                &app_install_opts.name
+            );
+            actions.update_versions(&app_install_opts.name)?;
+            let old_version = actions.get_current_version(&app_install_opts.name)?;
+            let new_version =
+                actions.get_latest_major_release(&app_install_opts.name, &old_version)?;
+            if util::is_version_equal(&old_version, &new_version)? {
+                println!(
+                    "{} is at latest version {}",
+                    &app_install_opts.name, new_version
+                );
+                return Ok(());
+            }
+            let ans = Confirm::new(
+                format!(
+                    "You are going to upgrade {} version {} to {}. Are you sure?",
+                    app_install_opts.name, old_version, new_version
+                )
+                .as_str(),
+            )
+            .with_default(false)
+            .prompt();
+
+            match ans {
+                Ok(true) => actions.upgrade(&app_install_opts.name, &old_version, &new_version)?,
+                Ok(false) => println!("Aborted"),
+                Err(_) => println!("Cannot confirm or deny uninstallation"),
+            }
 
             Ok(())
         }

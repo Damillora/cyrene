@@ -30,6 +30,8 @@ pub enum CyreneError {
     NoAppError,
     #[error("Something is wrong with versioning")]
     VersioningError,
+    #[error("Error parsing versions")]
+    VersionError(#[from] semver::Error),
     #[error("Cannot locate cyrene")]
     ExePathError,
     #[error("Cannot locate plugin")]

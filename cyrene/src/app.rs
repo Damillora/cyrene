@@ -1,11 +1,11 @@
-use std::{cmp::Ordering, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
-use ::versions::Versioning;
 use log::debug;
 use rune::{
-    Any, Context, Diagnostics, Source, Sources, Vm,
+    Context, Diagnostics, Source, Sources, Vm,
     termcolor::{ColorChoice, StandardStream},
 };
+use semver::Version;
 
 use crate::{
     app_module::{
@@ -13,7 +13,6 @@ use crate::{
         sources, versions,
     },
     errors::CyreneError,
-    responses::CyreneAppVersions,
 };
 
 pub struct CyreneApp {
@@ -63,17 +62,15 @@ impl CyreneApp {
         self.app_name.clone()
     }
 
-    pub fn get_versions(&mut self) -> Result<Vec<CyreneAppVersions>, CyreneError> {
+    pub fn get_versions(&mut self) -> Result<Vec<String>, CyreneError> {
         let output = self.script_vm.call(["get_versions"], ())?;
         let output: Vec<String> = rune::from_value(output)?;
-        let mut output: Vec<CyreneAppVersions> = output
-            .iter()
-            .map(|m| CyreneAppVersions {
-                name: self.app_name.to_owned(),
-                version: Versioning::new(m.trim_start_matches("v").to_owned()).unwrap(),
-            })
-            .collect();
-        output.sort_by(|a, b| a.version.cmp(&b.version));
+        let mut output: Vec<String> = output;
+        output.sort_by(|a, b| {
+            let a = Version::parse(a).unwrap();
+            let b = Version::parse(b).unwrap();
+            b.cmp(&a)
+        });
 
         Ok(output)
     }
