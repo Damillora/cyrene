@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["cyrene"]
+
+[workspace.package]
+authors = ["Damillora"]
+documentation = "https://cyrene.nanao.moe"
+homepage = "https://cyrene.nanao.moe"
+repository = "https://github.com/Damillora/cyrene"
+license = "MIT"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
