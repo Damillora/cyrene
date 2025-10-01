@@ -19,6 +19,8 @@ A set of plugins are available in the [cyrene-plugins](https://github.com/Damill
 
 Grab the latest binary from the [Releases](https://github.com/Damillora/cyrene/releases) page.
 
+After that, run `cyrene env` to generate required environment variables to `$HOME/.config/cyrene/cyrene_env.sh`, then `source` this file.
+
 ### Run from source
 
 cyrene is built and tested against latest Rust.
@@ -29,11 +31,15 @@ cd cyrene
 cargo install --path cyrene
 ```
 
+After that, run `cyrene env` to generate required environment variables to `$HOME/.config/cyrene/cyrene_env.sh`, then `source` this file.
+
 ### Managing cyrene with cyrene
 
 To manage `cyrene` with `cyrene` itself, first install `cyrene` version `0.2.3` or later, alongside the [cyrene](https://github.com/Damillora/cyrene-plugins/blob/main/cyrene.rn) plugin.
 
-After that, simply:
+After that, run `cyrene env` to generate required environment variables to `$HOME/.config/cyrene/cyrene_env.sh`, then `source` this file. **Loading this environment file is mandatory to manage cyrene with cyrene**. cyrene version `0.2.3` has a check that prevents `cyrene` from sacrificing itself if the environment is not properly loaded.
+
+Then simply:
 ```sh
 cyrene install cyrene
 ```
