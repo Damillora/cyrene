@@ -31,14 +31,26 @@ cargo install --path cyrene
 
 ## Usage
 
+[![asciicast](https://asciinema.org/a/2R58mjpKZ40Upx2KdiHdZ1fmx.svg)](https://asciinema.org/a/2R58mjpKZ40Upx2KdiHdZ1fmx)
+
 ```sh
 # Install multiple versions of runtimes...
-cyrene install node 22
-cyrene install node 20
+cyrene install node@22
+cyrene install node@20
 # ..and enable one of them at a time.
 cyrene link node 20
+node
+# Welcome to Node.js v20.19.5.
+# Type ".help" for more information.
+# >
+cyrene link node 22
+node
+# Welcome to Node.js v22.20.0.
+# Type ".help" for more information.
+# >
+
 # Upgrades are per major version
-cyrene upgrade node 22
+cyrene upgrade node@22
 # Uninstall every Node version
 cyrene uninstall node
 # Lockfile example
@@ -47,6 +59,10 @@ cat << EOF > cyrene.toml
 node = "20.19.5"
 EOF
 cyrene load
+node
+# Welcome to Node.js v20.19.5.
+# Type ".help" for more information.
+# >
 # Load default lockfile
 cyrene load -d
 ```
