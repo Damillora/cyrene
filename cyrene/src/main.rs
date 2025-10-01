@@ -41,14 +41,14 @@ pub enum Commands {
     Install(AppInstallOpts),
     /// Upgrade binaries
     Upgrade(AppUpgradeOpts),
-    /// Link installed binaries
-    Link(AppLinkOpts),
-    /// Unlink installed binaries
-    Unlink(AppUnlinkOpts),
     /// Uninstall binaries
     Uninstall(AppUninstallOpts),
     /// List installed binaries
     List(AppListOpts),
+    /// Link installed binaries
+    Link(AppLinkOpts),
+    /// Unlink installed binaries
+    Unlink(AppUnlinkOpts),
     /// List versions of a binary
     Versions(AppVersionsOpts),
     /// Refresh versions of a binary
