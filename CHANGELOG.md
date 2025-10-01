@@ -9,10 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 - BREAKING Change: Install, upgrade, and uninstall multiple apps at once with `<plugin>@<version>` syntax.
+- `cyrene list`: Show linked versions as well.
+
 ## Changed
 - Rework version handling
 - A few refactorings
 - `cyrene upgrade`: Upgrade all apps when no apps are specified.
+- Remove app from lockfile if candidates for linking are no longer available.
 
 ## [0.1.0] - 2025-10-01
 

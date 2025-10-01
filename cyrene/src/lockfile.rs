@@ -52,7 +52,7 @@ impl CyreneLockfileManager {
         Ok(version)
     }
 
-    pub fn update_lockfile(&self, name: &str, version: &str) -> Result<(), CyreneError> {
+    pub fn update_lockfile(&self, name: &str, version: Option<&str>) -> Result<(), CyreneError> {
         let mut lockfile_path = PathBuf::from(&self.lockfile_path);
         let mut lockfile = if !fs::exists(&lockfile_path)? {
             CyreneLockfile::default()
@@ -71,9 +71,13 @@ impl CyreneLockfileManager {
             }
         }
         debug!("Using lockfile {}", lockfile_path.to_string_lossy());
-        lockfile
-            .versions
-            .insert(name.to_owned(), version.to_owned());
+        if let Some(version) = version {
+            lockfile
+                .versions
+                .insert(name.to_owned(), version.to_owned());
+        } else {
+            lockfile.versions.remove(name);
+        }
         let lockfile_write = toml::ser::to_string(&lockfile)?;
         fs::write(lockfile_path, lockfile_write)?;
         Ok(())
@@ -147,5 +151,26 @@ impl CyreneLockfileManager {
             })
             .collect();
         Ok(version)
+    }
+
+    pub fn load_version_map_from_current_lockfile(
+        &self,
+    ) -> Result<BTreeMap<String, String>, CyreneError> {
+        let mut lockfile = if !fs::exists(&self.lockfile_path)? {
+            CyreneLockfile::default()
+        } else {
+            let lockfile_read = fs::read_to_string(&self.lockfile_path)?;
+            let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
+            lockfile
+        };
+        if let Some(loaded_lockfile) = lockfile.loaded_lockfile {
+            // Load needed versions from new lockfile
+            lockfile = {
+                let lockfile_read = fs::read_to_string(&loaded_lockfile)?;
+                let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
+                lockfile
+            };
+        }
+        Ok(lockfile.versions.clone())
     }
 }

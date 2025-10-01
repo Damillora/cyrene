@@ -15,6 +15,13 @@ pub struct CyreneAppVersionsRow {
     pub name: String,
     pub version: String,
 }
+#[derive(Tabled)]
+#[tabled(rename_all = "Upper Title Case")]
+pub struct CyreneAppVersionsAllRow {
+    pub name: String,
+    pub version: String,
+    pub linked: bool,
+}
 
 impl From<&(String, String)> for CyreneAppVersionsRow {
     fn from(value: &(String, String)) -> Self {
@@ -49,7 +56,7 @@ pub fn cyrene_app_versions(versions: &[(String, String)], long_ver: bool) {
     }
 }
 
-pub fn cyrene_app_versions_all(versions: &[CyreneAppVersionsRow], long_ver: bool) {
+pub fn cyrene_app_versions_all(versions: &[CyreneAppVersionsAllRow], long_ver: bool) {
     if long_ver {
         let table_items = versions.iter();
 
@@ -60,8 +67,13 @@ pub fn cyrene_app_versions_all(versions: &[CyreneAppVersionsRow], long_ver: bool
 
         println!("{}", table);
     } else {
-        versions
-            .iter()
-            .for_each(|f| println!("{}: {}", f.name, f.version));
+        versions.iter().for_each(|f| {
+            println!(
+                "{}: {} {}",
+                f.name,
+                f.version,
+                if f.linked { "(*)" } else { "" },
+            )
+        });
     }
 }

@@ -6,7 +6,7 @@ use miette::{ErrReport, IntoDiagnostic};
 use semver::Version;
 
 use crate::{
-    errors::CyreneError, manager::CyreneManager, tables::CyreneAppVersionsRow,
+    errors::CyreneError, manager::CyreneManager, tables::CyreneAppVersionsAllRow,
     util::is_major_version_equal,
 };
 /// Cyrene app definition
@@ -211,7 +211,8 @@ fn start() -> Result<(), CyreneError> {
                             if let Some(linked_version) = linked_version
                                 && is_major_version_equal(&linked_version, &app_action.version)?
                             {
-                                actions.update_lockfile(&app_action.name, &app_action.version)?;
+                                actions
+                                    .update_lockfile(&app_action.name, Some(&app_action.version))?;
                             }
                             let not_overwritten_exists = actions.link_binaries(
                                 &app_action.name,
@@ -253,7 +254,7 @@ fn start() -> Result<(), CyreneError> {
                 app_install_opts.name.clone(),
             ))?;
             actions.link_binaries(&app_install_opts.name, &version, true)?;
-            actions.update_lockfile(&app_install_opts.name, &version)?;
+            actions.update_lockfile(&app_install_opts.name, Some(&version))?;
             Ok(())
         }
         Commands::Unlink(app_install_opts) => {
@@ -343,13 +344,23 @@ fn start() -> Result<(), CyreneError> {
             Ok(())
         }
         Commands::List(app_version_opts) => {
+            let lockfile_versions = actions.get_app_version_map()?;
             let apps: Vec<_> = actions
                 .list_apps()?
                 .iter()
                 .flat_map(|f| {
                     let versions = actions.list_installed_app_versions(f).unwrap();
-                    let versions: Vec<_> =
-                        versions.iter().map(CyreneAppVersionsRow::from).collect();
+                    let versions: Vec<_> = versions
+                        .iter()
+                        .map(|f| CyreneAppVersionsAllRow {
+                            name: f.name.clone(),
+                            version: f.version.clone(),
+                            linked: match lockfile_versions.get(&f.name) {
+                                Some(ver) => f.version.eq(ver),
+                                None => false,
+                            },
+                        })
+                        .collect();
                     versions
                 })
                 .collect();
@@ -394,7 +405,7 @@ fn app_upgrade(
     actions: &mut CyreneManager,
     app_install_opts: &AppUpgradeOpts,
 ) -> Result<(), CyreneError> {
-    let app_to_be_installed: Vec<_> = if let Some(apps) = app_install_opts.apps {
+    let app_to_be_installed: Vec<_> = if let Some(apps) = &app_install_opts.apps {
         apps.iter().map(AppVersion::from).collect()
     } else {
         actions

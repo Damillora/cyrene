@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
     sync::Arc,
@@ -171,9 +172,10 @@ impl CyreneManager {
 
     pub fn install(&self, name: &str, version: &str) -> Result<(), CyreneError> {
         self.install_specific_version(name, version)?;
-        self.link_binaries(name, version, false)?;
-        self.update_lockfile(name, version)?;
-
+        let exists_not_overwritten = self.link_binaries(name, version, false)?;
+        if !exists_not_overwritten {
+            self.update_lockfile(name, Some(version))?;
+        }
         Ok(())
     }
 
@@ -199,9 +201,9 @@ impl CyreneManager {
         Ok(())
     }
 
-    pub fn update_lockfile(&self, name: &str, version: &str) -> Result<(), CyreneError> {
+    pub fn update_lockfile(&self, name: &str, version: Option<&str>) -> Result<(), CyreneError> {
         debug!(
-            "Updating lockfile: app version {} for plugin {}",
+            "Updating lockfile: app version {:?} for plugin {}",
             version, &name
         );
         self.lockfile.update_lockfile(name, version)
@@ -303,7 +305,9 @@ impl CyreneManager {
                     get_release, name
                 );
                 self.link_binaries(name, &get_release, true)?;
-                self.update_lockfile(name, &get_release)?;
+                self.update_lockfile(name, Some(&get_release))?;
+            } else {
+                self.update_lockfile(name, None)?;
             }
         }
 
@@ -318,6 +322,7 @@ impl CyreneManager {
             return Err(CyreneError::AppNotInstalledError(name.to_string()));
         }
         self.unlink_binaries(name)?;
+        self.update_lockfile(name, None)?;
         fs::remove_dir_all(&installation_path)?;
 
         Ok(())
@@ -339,7 +344,7 @@ impl CyreneManager {
         let overwrite_installed = current_installed.eq(old_version);
         self.install_specific_version(name, new_version)?;
         self.link_binaries(name, new_version, overwrite_installed)?;
-        self.update_lockfile(name, new_version)?;
+        self.update_lockfile(name, Some(new_version))?;
         self.uninstall(name, old_version)?;
 
         Ok(())
@@ -409,7 +414,21 @@ impl CyreneManager {
             .collect();
         Ok(a)
     }
-
+    pub fn list_linked_app_versions(&self) -> Result<Vec<CyreneAppItem>, CyreneError> {
+        let lockfile_items: Vec<_> = self
+            .lockfile
+            .load_versions_from_current_lockfile()?
+            .iter()
+            .map(|f| CyreneAppItem {
+                name: f.name.clone(),
+                version: f.version.clone(),
+            })
+            .collect();
+        Ok(lockfile_items)
+    }
+    pub fn get_app_version_map(&self) -> Result<BTreeMap<String, String>, CyreneError> {
+        self.lockfile.load_version_map_from_current_lockfile()
+    }
     pub fn load_lockfile(&self, loaded_lockfile: Option<&Path>) -> Result<(), CyreneError> {
         match &loaded_lockfile {
             Some(loaded_lockfile) => self.lockfile.use_local_lockfile(loaded_lockfile)?,
