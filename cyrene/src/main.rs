@@ -1,7 +1,6 @@
 use std::{fs, path::PathBuf};
 
 use clap::{Args, Parser, Subcommand, command};
-use directories::ProjectDirs;
 use inquire::Confirm;
 use miette::{ErrReport, IntoDiagnostic};
 use semver::Version;
@@ -11,6 +10,8 @@ use crate::{errors::CyreneError, manager::CyreneManager, tables::CyreneAppVersio
 pub mod app;
 /// Modules used by Cyrene app scripts
 pub mod app_module;
+/// Directory management
+pub mod dirs;
 /// Error definitions
 pub mod errors;
 /// Lockfile
@@ -125,10 +126,8 @@ fn main() -> Result<(), ErrReport> {
 fn start() -> Result<(), CyreneError> {
     env_logger::init();
     let cli = Cli::parse();
-    let proj_dirs =
-        ProjectDirs::from("com", "Damillora", "Cyrene").ok_or(CyreneError::NoHomeError)?;
 
-    let actions = CyreneManager::new(proj_dirs)?;
+    let actions = CyreneManager::new()?;
 
     match cli.command {
         Commands::Install(app_install_opts) => {

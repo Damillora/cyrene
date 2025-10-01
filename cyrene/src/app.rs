@@ -80,7 +80,11 @@ impl CyreneApp {
         Ok(output)
     }
 
-    pub fn install(&mut self, installation_dir: &Path, version: &str) -> Result<(), CyreneError> {
+    pub fn install_version(
+        &mut self,
+        installation_dir: &Path,
+        version: &str,
+    ) -> Result<(), CyreneError> {
         std::env::set_current_dir(installation_dir)?;
         debug!(
             "Installing {} version {} to {}",
