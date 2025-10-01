@@ -71,9 +71,11 @@ cyrene load -d
 ## Configuration
 
 Cyrene is currently configured with environment variables:
+Run `cyrene env` to generate a script exporting its default configuration to `$HOME/.config/cyrene/cyrene.sh`.
 
-* `CYRENE_APPS_DIR`: Location of installed binaries
-* `CYRENE_PLUGINS_DIR`: Location of installed plugins
+* `CYRENE_APPS_DIR`: Location of installed binaries. Defaults to `$HOME/.local/share/cyrene/apps`.
+* `CYRENE_PLUGINS_DIR`: Location of installed plugins. Defaults to `$HOME/.local/share/cyrene/apps`.
+* `CYRENE_INSTALL_DIR`: Location of the `cyrene` binary itself. Default to the location of the `cyrene` executable itself.
 
 The default lockfile is located at `$HOME/.config/cyrene/cyrene.toml`. Per-project lockfiles are configured using the current directory's `cyrene.toml` file.
 

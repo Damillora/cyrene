@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, sync::Arc};
 
 use clap::{Args, Parser, Subcommand, command};
 use console::{Color, Style, style};
@@ -7,8 +7,9 @@ use miette::{ErrReport, IntoDiagnostic};
 use semver::Version;
 
 use crate::{
-    errors::CyreneError, manager::CyreneManager, tables::CyreneAppVersionsAllRow,
-    util::is_major_version_equal,
+    dirs::CyreneDirs, errors::CyreneError, lockfile::CyreneLockfileManager, manager::CyreneManager,
+    tables::CyreneAppVersionsAllRow, util::is_major_version_equal,
+    versions_cache::CyreneVersionCacheManager,
 };
 /// Cyrene app definition
 pub mod app;
@@ -89,6 +90,8 @@ pub enum Commands {
     Refresh(AppRefreshOpts),
     /// Load cyrene.toml lockfiles in a directory
     Load(AppLoadOpts),
+    /// Generate environment variables needed by cyrene
+    Env,
 }
 
 #[derive(Args)]
@@ -156,7 +159,12 @@ fn start() -> Result<(), CyreneError> {
     env_logger::init();
     let cli = Cli::parse();
 
-    let mut actions = CyreneManager::new()?;
+    let dirs = Arc::new(CyreneDirs::default());
+    dirs.init_dirs()?;
+    let cache_manager = Box::new(CyreneVersionCacheManager::new(&dirs.version_cache_path));
+    let lockfile_manager = Box::new(CyreneLockfileManager::new(&dirs.lockfile_path()));
+
+    let mut actions = CyreneManager::new(dirs, lockfile_manager, cache_manager)?;
 
     match cli.command {
         Commands::Install(app_install_opts) => {
@@ -447,6 +455,7 @@ fn start() -> Result<(), CyreneError> {
 
             Ok(())
         }
+        Commands::Env => actions.generate_env(),
     }
 }
 

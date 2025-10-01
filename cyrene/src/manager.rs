@@ -5,6 +5,7 @@ use std::{
     sync::Arc,
 };
 
+use console::style;
 use log::debug;
 use semver::{Version, VersionReq};
 
@@ -133,12 +134,11 @@ impl CyreneManager {
 }
 
 impl CyreneManager {
-    pub fn new() -> Result<Self, CyreneError> {
-        let dirs = Arc::new(CyreneDirs::default());
-        dirs.init_dirs()?;
-
-        let cache_manager = Box::new(CyreneVersionCacheManager::new(&dirs.version_cache_path));
-        let lockfile_manager = Box::new(CyreneLockfileManager::new(&dirs.lockfile_path()));
+    pub fn new(
+        dirs: Arc<CyreneDirs>,
+        lockfile_manager: Box<CyreneLockfileManager>,
+        cache_manager: Box<CyreneVersionCacheManager>,
+    ) -> Result<Self, CyreneError> {
         Ok(Self {
             dirs,
             lockfile: lockfile_manager,
@@ -455,6 +455,40 @@ impl CyreneManager {
                 self.install_specific_version(&lockfile_item.name, &lockfile_item.version)?;
             }
             self.link_binaries(&lockfile_item.name, &lockfile_item.version, true)?;
+        }
+
+        Ok(())
+    }
+    pub fn generate_env(&self) -> Result<(), CyreneError> {
+        // Write a shell script exporting cyrene's CYRENE_INSTALL_DIR
+        // Located in $XDG_CONFIG_HOME/cyrene/cyrene.sh
+        let mut env_file = self.dirs.config_dir.clone();
+        env_file.push("cyrene_env.sh");
+
+        let exists_before = fs::exists(&env_file)?;
+
+        let script = format!(
+            "export CYRENE_INSTALL_DIR={}
+export CYRENE_APPS_DIR={}
+export CYRENE_PLUGINS_DIR={}",
+            &self.dirs.exe_dir.to_string_lossy(),
+            &self.dirs.apps_dir.to_string_lossy(),
+            &self.dirs.plugins_dir.to_string_lossy(),
+        );
+        fs::write(&env_file, &script)?;
+
+        if !exists_before {
+            println!(
+                "Import the environment needed to enable managing cyrene with cyrene itself by {}:",
+                style("adding this line to your shell profile").fg(console::Color::Yellow)
+            );
+            println!();
+            println!("    source {}", env_file.to_string_lossy());
+            println!();
+            println!(
+                "To start using cyrene now, {}",
+                style("copy the line into your shell and run it.").fg(console::Color::Yellow)
+            );
         }
 
         Ok(())

@@ -4,7 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-## [Unreleased]
+
+## [0.2.1] - 2025-10-01
+
+### Added
+- `cyrene` now supports the `CYRENE_INSTALL_DIR` environment variable, to facillitate managing `cyrene` with `cyrene` itself.
+- Preliminary support for generating `cyrene`'s environment using `cyrene env`. For now, this only generates `cyrene`'s default configuration, but there are plans to also insert environment variables needed by `cyrene` plugins.
 
 ## [0.2.0] - 2025-10-01
 
@@ -28,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extensible with scripts written in [Rune](https://rune-rs.github.io/)
 - Synchronize tool versions with `cyrene.toml` lockfiles
 
-[unreleased]: https://github.com/Damillora/cyrene/compare/v0.2.0...HEAD
+[unreleased]: https://github.com/Damillora/cyrene/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Damillora/cyrene/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Damillora/cyrene/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Damillora/cyrene/releases/tag/v0.1.0

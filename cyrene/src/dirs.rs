@@ -18,6 +18,7 @@ impl CyreneDirs {
         fs::create_dir_all(&self.plugins_dir)?;
         fs::create_dir_all(&self.config_dir)?;
         fs::create_dir_all(&self.cache_dir)?;
+        fs::create_dir_all(&self.exe_dir)?;
 
         Ok(())
     }
@@ -62,11 +63,14 @@ impl Default for CyreneDirs {
             }
         };
         let config_dir = proj_dirs.config_dir().to_path_buf();
-        let exe_dir = std::env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .to_path_buf();
+        let exe_dir = match std::env::var("CYRENE_INSTALL_DIR") {
+            Ok(env) => PathBuf::from(env),
+            Err(_) => std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .to_path_buf(),
+        };
         let cache_dir = proj_dirs.cache_dir().to_path_buf();
         let mut versions_cache_dir = cache_dir.clone();
         versions_cache_dir.push("versions.yaml");
