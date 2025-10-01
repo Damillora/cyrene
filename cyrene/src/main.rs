@@ -137,7 +137,10 @@ fn start() -> Result<(), CyreneError> {
                 } else {
                     actions
                         .get_latest_major_release(&app_install_opts.name, ver.as_str())?
-                        .ok_or(CyreneError::AppVersionNotFoundError)?
+                        .ok_or(CyreneError::AppVersionNotFoundError(
+                            ver.to_string(),
+                            app_install_opts.name.clone(),
+                        ))?
                 }
             } else {
                 actions.get_latest_version(&app_install_opts.name)?
@@ -201,7 +204,9 @@ fn start() -> Result<(), CyreneError> {
                     &app_install_opts.version,
                 )?
             }
-            .ok_or(CyreneError::AppVersionNotInstalledError)?;
+            .ok_or(CyreneError::AppNotInstalledError(
+                app_install_opts.name.clone(),
+            ))?;
             actions.link_binaries(&app_install_opts.name, &version, true)?;
             actions.update_lockfile(&app_install_opts.name, &version)?;
             Ok(())
@@ -257,7 +262,9 @@ fn start() -> Result<(), CyreneError> {
                         Err(_) => println!("Cannot confirm or deny uninstallation"),
                     }
                 } else {
-                    return Err(CyreneError::AppVersionNotInstalledError);
+                    return Err(CyreneError::AppNotInstalledError(
+                        app_install_opts.name.clone(),
+                    ));
                 }
                 Ok(())
             }
@@ -288,7 +295,7 @@ fn start() -> Result<(), CyreneError> {
                 .list_apps()?
                 .iter()
                 .flat_map(|f| {
-                    let versions = actions.list_installed_app_versions(&f).unwrap();
+                    let versions = actions.list_installed_app_versions(f).unwrap();
                     let versions: Vec<_> =
                         versions.iter().map(CyreneAppVersionsRow::from).collect();
                     versions
@@ -339,10 +346,15 @@ fn app_upgrade(
         Some(ver) => actions.find_installed_major_release(&app_install_opts.name, ver)?,
         None => actions.find_installed_version(&app_install_opts.name)?,
     }
-    .ok_or(CyreneError::AppVersionNotFoundError)?;
+    .ok_or(CyreneError::AppNotInstalledError(
+        app_install_opts.name.clone(),
+    ))?;
     let new_version = actions
         .get_latest_major_release(&app_install_opts.name, &old_version)?
-        .ok_or(CyreneError::AppVersionNotFoundError)?;
+        .ok_or(CyreneError::AppVersionNotFoundError(
+            app_install_opts.name.clone(),
+            old_version.clone(),
+        ))?;
     if old_version.eq(&new_version) {
         println!(
             "{} is at latest version {}",

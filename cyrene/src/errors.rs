@@ -28,12 +28,18 @@ pub enum CyreneError {
     RuneAllocError(#[from] rune::alloc::Error),
     #[error("Cannot find cyrene configuration")]
     NoHomeError,
-    #[error("App is not installed")]
-    AppVersionNotInstalledError,
+    #[error("App for plugin {0} is not installed")]
+    AppNotInstalledError(String),
     #[error("App not registered in lockfile")]
     AppVersionNotInLockfileError,
-    #[error("Cannot find app version in version list")]
-    AppVersionNotFoundError,
+    #[error("App version {0} for plugin {1} is not installed")]
+    AppVersionNotInstalledError(String, String),
+    #[error("Cannot find app version {0} for plugin {1} in version list")]
+    AppVersionNotFoundError(String, String),
+    #[error("Cannot find app version {0} for plugin {1} in versions cache")]
+    AppVersionNotFoundInCacheError(String, String),
+    #[error("Cannot find app versions for plugin {0} in versions cache")]
+    AppVersionNotInCacheError(String),
     #[error("Error parsing versions")]
     VersionError(#[from] semver::Error),
     #[error("Cannot locate cyrene")]

@@ -53,7 +53,10 @@ impl CyreneManager {
 
         let installation_path = self.dirs.installation_path(&plugin_name, version);
         if !fs::exists(&installation_path)? {
-            return Err(CyreneError::AppVersionNotInstalledError);
+            return Err(CyreneError::AppVersionNotInstalledError(
+                version.to_string(),
+                plugin_name,
+            ));
         }
 
         let binaries = plugin.binaries(version)?;
@@ -106,7 +109,10 @@ impl CyreneManager {
         debug!("Unlinking app versions for plugin {}", &plugin_name);
         let installation_path = self.dirs.installation_path(&plugin_name, version);
         if !fs::exists(&installation_path)? {
-            return Err(CyreneError::AppVersionNotInstalledError);
+            return Err(CyreneError::AppVersionNotInstalledError(
+                version.to_string(),
+                plugin_name,
+            ));
         }
         let binaries = plugin.binaries(version)?;
 
@@ -185,7 +191,7 @@ impl CyreneManager {
         // $CYRENE_APPS_DIR/app_name-app_version
         let installation_path = self
             .dirs
-            .installation_path(&name, required_version.to_string().as_str());
+            .installation_path(name, required_version.to_string().as_str());
         fs::create_dir_all(&installation_path)?;
 
         plugin.install_version(&installation_path, required_version.to_string().as_str())?;
@@ -268,7 +274,10 @@ impl CyreneManager {
         debug!("Uninstalling app version {} for plugin {}", version, name);
         let installation_path = self.dirs.installation_path(name, version);
         if !fs::exists(&installation_path)? {
-            return Err(CyreneError::AppVersionNotInstalledError);
+            return Err(CyreneError::AppVersionNotInstalledError(
+                version.to_string(),
+                name.to_string(),
+            ));
         }
 
         let current_version = self
@@ -306,7 +315,7 @@ impl CyreneManager {
         let installation_path = self.dirs.installation_root(name);
         debug!("{}", installation_path.to_string_lossy());
         if !fs::exists(&installation_path)? {
-            return Err(CyreneError::AppVersionNotInstalledError);
+            return Err(CyreneError::AppNotInstalledError(name.to_string()));
         }
         self.unlink_binaries(name)?;
         fs::remove_dir_all(&installation_path)?;
@@ -354,7 +363,7 @@ impl CyreneManager {
 
         Ok(versions
             .first()
-            .ok_or(CyreneError::AppVersionNotFoundError)?
+            .ok_or(CyreneError::AppVersionNotInCacheError(name.to_string()))?
             .to_string())
     }
 
