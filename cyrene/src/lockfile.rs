@@ -6,30 +6,22 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{errors::CyreneError, lockfile, responses::CyreneAppItem};
+use crate::{errors::CyreneError, responses::CyreneAppItem};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct CyreneLockfile {
     pub versions: BTreeMap<String, String>,
     pub loaded_lockfile: Option<String>,
-}
-impl CyreneLockfile {
-    pub fn new() -> Self {
-        CyreneLockfile {
-            versions: BTreeMap::new(),
-            loaded_lockfile: None,
-        }
-    }
 }
 
 pub fn find_installed_version_from_lockfile(
     lockfile_path: &Path,
     name: &str,
 ) -> Result<Option<String>, CyreneError> {
-    let mut lockfile = if !fs::exists(&lockfile_path)? {
-        CyreneLockfile::new()
+    let mut lockfile = if !fs::exists(lockfile_path)? {
+        CyreneLockfile::default()
     } else {
-        let lockfile_read = fs::read_to_string(&lockfile_path)?;
+        let lockfile_read = fs::read_to_string(lockfile_path)?;
         let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
         lockfile
     };
@@ -52,7 +44,7 @@ pub fn find_installed_version_from_lockfile(
 pub fn update_lockfile(lockfile_path: &Path, name: &str, version: &str) -> Result<(), CyreneError> {
     let mut lockfile_path = PathBuf::from(lockfile_path);
     let mut lockfile = if !fs::exists(&lockfile_path)? {
-        CyreneLockfile::new()
+        CyreneLockfile::default()
     } else {
         let lockfile_read = fs::read_to_string(&lockfile_path)?;
         let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
@@ -77,10 +69,10 @@ pub fn update_lockfile(lockfile_path: &Path, name: &str, version: &str) -> Resul
 }
 
 pub fn use_default_lockfile(lockfile_path: &Path) -> Result<(), CyreneError> {
-    let mut lockfile = if !fs::exists(&lockfile_path)? {
-        CyreneLockfile::new()
+    let mut lockfile = if !fs::exists(lockfile_path)? {
+        CyreneLockfile::default()
     } else {
-        let lockfile_read = fs::read_to_string(&lockfile_path)?;
+        let lockfile_read = fs::read_to_string(lockfile_path)?;
         let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
         lockfile
     };
@@ -91,10 +83,10 @@ pub fn use_default_lockfile(lockfile_path: &Path) -> Result<(), CyreneError> {
 }
 
 pub fn use_local_lockfile(lockfile_path: &Path, loaded_lockfile: &Path) -> Result<(), CyreneError> {
-    let mut lockfile = if !fs::exists(&lockfile_path)? {
-        CyreneLockfile::new()
+    let mut lockfile = if !fs::exists(lockfile_path)? {
+        CyreneLockfile::default()
     } else {
-        let lockfile_read = fs::read_to_string(&lockfile_path)?;
+        let lockfile_read = fs::read_to_string(lockfile_path)?;
         let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
         lockfile
     };
@@ -109,10 +101,10 @@ pub fn use_local_lockfile(lockfile_path: &Path, loaded_lockfile: &Path) -> Resul
 }
 
 pub fn is_local_lockfile(lockfile_path: &Path) -> Result<bool, CyreneError> {
-    let lockfile = if !fs::exists(&lockfile_path)? {
-        CyreneLockfile::new()
+    let lockfile = if !fs::exists(lockfile_path)? {
+        CyreneLockfile::default()
     } else {
-        let lockfile_read = fs::read_to_string(&lockfile_path)?;
+        let lockfile_read = fs::read_to_string(lockfile_path)?;
         let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
         lockfile
     };
@@ -122,10 +114,10 @@ pub fn is_local_lockfile(lockfile_path: &Path) -> Result<bool, CyreneError> {
 pub fn load_versions_from_lockfile(
     lockfile_path: &Path,
 ) -> Result<Vec<CyreneAppItem>, CyreneError> {
-    let mut lockfile = if !fs::exists(&lockfile_path)? {
-        CyreneLockfile::new()
+    let mut lockfile = if !fs::exists(lockfile_path)? {
+        CyreneLockfile::default()
     } else {
-        let lockfile_read = fs::read_to_string(&lockfile_path)?;
+        let lockfile_read = fs::read_to_string(lockfile_path)?;
         let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
         lockfile
     };

@@ -136,16 +136,12 @@ fn start() -> Result<(), CyreneError> {
                 if Version::parse(ver).is_ok() {
                     ver.to_string()
                 } else {
-                    let get_release = actions
+                    actions
                         .get_latest_major_release(&app_install_opts.name, ver.as_str())?
-                        .ok_or(CyreneError::AppVersionNotFoundError)?;
-
-                    get_release
+                        .ok_or(CyreneError::AppVersionNotFoundError)?
                 }
             } else {
-                let latest_release = actions.get_latest_version(&app_install_opts.name)?;
-
-                latest_release
+                actions.get_latest_version(&app_install_opts.name)?
             };
 
             if actions.package_exists(&app_install_opts.name, &install_version)? {
@@ -177,12 +173,10 @@ fn start() -> Result<(), CyreneError> {
             let version = if Version::parse(&app_install_opts.version).is_ok() {
                 Some(app_install_opts.version)
             } else {
-                let get_release = actions.find_installed_major_release(
+                actions.find_installed_major_release(
                     &app_install_opts.name,
-                    &app_install_opts.version.as_str(),
-                )?;
-
-                get_release
+                    &app_install_opts.version,
+                )?
             }
             .ok_or(CyreneError::AppVersionNotInstalledError)?;
             actions.link_binaries(&app_install_opts.name, &version, true, true)?;
@@ -205,10 +199,8 @@ fn start() -> Result<(), CyreneError> {
                 let version = if Version::parse(&version).is_ok() {
                     Some(version)
                 } else {
-                    let get_release = actions
-                        .find_installed_major_release(&app_install_opts.name, version.as_str())?;
-
-                    get_release
+                    actions
+                        .find_installed_major_release(&app_install_opts.name, version.as_str())?
                 };
                 if let Some(version) = version
                     && actions.package_exists(&app_install_opts.name, version.as_str())?
@@ -300,7 +292,7 @@ fn app_upgrade(
     app_install_opts: &AppUpgradeOpts,
 ) -> Result<(), CyreneError> {
     let old_version = match &app_install_opts.version {
-        Some(ver) => actions.find_installed_major_release(&app_install_opts.name, &ver)?,
+        Some(ver) => actions.find_installed_major_release(&app_install_opts.name, ver)?,
         None => actions.find_installed_version(&app_install_opts.name)?,
     }
     .ok_or(CyreneError::AppVersionNotFoundError)?;

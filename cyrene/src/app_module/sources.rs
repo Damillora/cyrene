@@ -28,7 +28,7 @@ fn from_file(url: String) {
     let target_filename = url
         .trim_end_matches('/')
         .split('/')
-        .last()
+        .next_back()
         .unwrap()
         .to_string();
     let mut file = File::create(target_filename).unwrap();

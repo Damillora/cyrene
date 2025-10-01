@@ -37,15 +37,12 @@ pub fn update_version_cache(
     versions: Vec<String>,
 ) -> Result<(), CyreneError> {
     let mut cache: CyreneVersionsCache = if !fs::exists(cache_path)? {
-        let new_cache = CyreneVersionsCache {
+        CyreneVersionsCache {
             versions: BTreeMap::new(),
-        };
-        new_cache
+        }
     } else {
         let file = fs::read_to_string(cache_path)?;
-        let cache: CyreneVersionsCache = toml::de::from_str(&file)?;
-
-        cache
+        toml::de::from_str(&file)?
     };
     cache.versions.insert(String::from(name), versions);
     let cache_file = toml::ser::to_string(&cache)?;

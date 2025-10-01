@@ -74,7 +74,7 @@ impl CyreneApp {
             .map(|a| a.trim_start_matches("v"))
             .filter_map(|a| Version::parse(a).ok())
             .collect();
-        output.sort_by(|a, b| b.cmp(&a));
+        output.sort_by(|a, b| b.cmp(a));
         let output: Vec<String> = output.iter().map(|a| a.to_string()).collect();
 
         Ok(output)
