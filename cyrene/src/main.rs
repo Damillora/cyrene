@@ -213,6 +213,9 @@ fn start() -> Result<(), CyreneError> {
                             {
                                 actions
                                     .update_lockfile(&app_action.name, Some(&app_action.version))?;
+                            } else {
+                                actions
+                                    .update_lockfile(&app_action.name, Some(&app_action.version))?;
                             }
                             let not_overwritten_exists = actions.link_binaries(
                                 &app_action.name,

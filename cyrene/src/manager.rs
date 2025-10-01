@@ -218,7 +218,7 @@ impl CyreneManager {
         let mut plugin = self.load_plugin(name)?;
         let not_overwritten_exists = self.link_plugin_binaries(&mut plugin, version, overwrite)?;
 
-        Ok(not_overwritten_exists && !overwrite)
+        Ok(not_overwritten_exists)
     }
 
     pub fn unlink_binaries(&mut self, name: &str) -> Result<(), CyreneError> {
