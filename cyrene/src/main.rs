@@ -5,7 +5,10 @@ use inquire::Confirm;
 use miette::{ErrReport, IntoDiagnostic};
 use semver::Version;
 
-use crate::{errors::CyreneError, manager::CyreneManager, tables::CyreneAppVersionsRow};
+use crate::{
+    errors::CyreneError, manager::CyreneManager, tables::CyreneAppVersionsRow,
+    util::is_major_version_equal,
+};
 /// Cyrene app definition
 pub mod app;
 /// Modules used by Cyrene app scripts
@@ -26,6 +29,36 @@ pub mod tables;
 pub mod util;
 /// Cyrene version caching
 pub mod versions_cache;
+
+pub struct AppVersion {
+    name: String,
+    version: Option<String>,
+}
+pub struct AppVersionAction {
+    name: String,
+    version: String,
+}
+pub struct AppVersionUpgradeAction {
+    name: String,
+    old_version: String,
+    new_version: String,
+}
+impl From<&String> for AppVersion {
+    fn from(value: &String) -> Self {
+        let app_str: Vec<_> = value.split("@").collect();
+        if app_str.len() == 1 {
+            AppVersion {
+                name: app_str.first().unwrap().to_string(),
+                version: None,
+            }
+        } else {
+            AppVersion {
+                name: app_str.first().unwrap().to_string(),
+                version: Some(app_str.get(1).unwrap().to_string()),
+            }
+        }
+    }
+}
 
 /// Manage your installed binaries
 #[derive(Parser)]
@@ -60,23 +93,18 @@ pub enum Commands {
 #[derive(Args)]
 pub struct AppInstallOpts {
     /// Name of app
-    name: String,
-    /// Version of app
-    version: Option<String>,
+    apps: Vec<String>,
 }
 #[derive(Args)]
 pub struct AppUpgradeOpts {
     /// Name of app
-    name: String,
-    /// Version of app
-    version: Option<String>,
+    apps: Vec<String>,
 }
+
 #[derive(Args)]
 pub struct AppUninstallOpts {
     /// Name of app
-    name: String,
-    /// Version of app
-    version: Option<String>,
+    apps: Vec<String>,
 }
 #[derive(Args)]
 pub struct AppLinkOpts {
@@ -131,66 +159,83 @@ fn start() -> Result<(), CyreneError> {
 
     match cli.command {
         Commands::Install(app_install_opts) => {
-            let install_version = if let Some(ver) = &app_install_opts.version {
-                if Version::parse(ver).is_ok() {
-                    ver.to_string()
+            let app_to_be_installed: Vec<_> =
+                app_install_opts.apps.iter().map(AppVersion::from).collect();
+            let mut app_actions: Vec<AppVersionAction> = Vec::new();
+            for app in app_to_be_installed {
+                let install_version = if let Some(ver) = &app.version {
+                    if Version::parse(ver).is_ok() {
+                        ver.to_string()
+                    } else {
+                        actions
+                            .get_latest_major_release(&app.name, ver.as_str())?
+                            .ok_or(CyreneError::AppVersionNotFoundError(
+                                ver.to_string(),
+                                app.name.clone(),
+                            ))?
+                    }
                 } else {
-                    actions
-                        .get_latest_major_release(&app_install_opts.name, ver.as_str())?
-                        .ok_or(CyreneError::AppVersionNotFoundError(
-                            ver.to_string(),
-                            app_install_opts.name.clone(),
-                        ))?
+                    actions.get_latest_version(&app.name)?
+                };
+                if actions.package_exists(&app.name, &install_version)? {
+                    println!(
+                        "{} version {} is already installed",
+                        &app.name, install_version
+                    );
+                } else {
+                    app_actions.push(AppVersionAction {
+                        name: app.name,
+                        version: install_version,
+                    });
                 }
-            } else {
-                actions.get_latest_version(&app_install_opts.name)?
-            };
+            }
 
-            if actions.package_exists(&app_install_opts.name, &install_version)? {
-                println!(
-                    "{} version {} is already installed",
-                    &app_install_opts.name, install_version
-                );
-            } else {
-                let ans = Confirm::new(
-                    format!(
-                        "You are going to install {} version {}. Are you sure?",
-                        app_install_opts.name, &install_version
-                    )
-                    .as_str(),
-                )
-                .with_default(false)
-                .prompt();
+            if !app_actions.is_empty() {
+                println!("The following apps will be installed:");
+                for app_action in &app_actions {
+                    println!("    {}: {}", app_action.name, app_action.version)
+                }
+                let ans = Confirm::new("Are you sure?").with_default(false).prompt();
 
                 match ans {
                     Ok(true) => {
-                        println!(
-                            "Installing {} version {}",
-                            &app_install_opts.name, &install_version
-                        );
-                        actions
-                            .install_specific_version(&app_install_opts.name, &install_version)?;
-                        actions.update_lockfile(&app_install_opts.name, &install_version)?;
-                        let not_overwritten_exists = actions.link_binaries(
-                            &app_install_opts.name,
-                            &install_version,
-                            false,
-                        )?;
+                        for app_action in app_actions {
+                            let linked_version =
+                                actions.find_installed_version(&app_action.name)?;
+                            println!(
+                                "Installing {} version {}",
+                                &app_action.name, &app_action.version
+                            );
+                            actions
+                                .install_specific_version(&app_action.name, &app_action.version)?;
+                            if let Some(linked_version) = linked_version
+                                && is_major_version_equal(&linked_version, &app_action.version)?
+                            {
+                                actions.update_lockfile(&app_action.name, &app_action.version)?;
+                            }
+                            let not_overwritten_exists = actions.link_binaries(
+                                &app_action.name,
+                                &app_action.version,
+                                false,
+                            )?;
 
-                        if not_overwritten_exists {
-                            println!(
-                                "An existing version is already installed. To use the newly installed binaries, run:"
-                            );
-                            println!();
-                            println!(
-                                "    cyrene link {} {}",
-                                &app_install_opts.name, &install_version
-                            );
-                        };
+                            if not_overwritten_exists {
+                                println!(
+                                    "An existing version is already installed. To use the newly installed binaries, run:"
+                                );
+                                println!();
+                                println!(
+                                    "    cyrene link {} {}",
+                                    &app_action.name, &app_action.version
+                                );
+                            };
+                        }
                     }
                     Ok(false) => println!("Aborted"),
                     Err(_) => println!("Cannot confirm or deny"),
                 }
+            } else {
+                println!("No action needed");
             }
 
             Ok(())
@@ -232,64 +277,71 @@ fn start() -> Result<(), CyreneError> {
             }
         }
         Commands::Upgrade(app_install_opts) => app_upgrade(&mut actions, &app_install_opts),
-        Commands::Uninstall(app_install_opts) => match app_install_opts.version {
-            Some(version) => {
-                let version = if Version::parse(&version).is_ok() {
-                    Some(version)
-                } else {
-                    actions
-                        .find_installed_major_release(&app_install_opts.name, version.as_str())?
-                };
-                if let Some(version) = version
-                    && actions.package_exists(&app_install_opts.name, version.as_str())?
-                {
-                    let ans = Confirm::new(
-                        format!(
-                            "You are going to uninstall {} version {}. Are you sure?",
-                            app_install_opts.name, version
-                        )
-                        .as_str(),
-                    )
-                    .with_default(false)
-                    .prompt();
+        Commands::Uninstall(app_install_opts) => {
+            let app_to_be_installed: Vec<_> =
+                app_install_opts.apps.iter().map(AppVersion::from).collect();
+            let mut app_actions: Vec<AppVersion> = Vec::new();
+            for app in app_to_be_installed {
+                let version = match &app.version {
+                    Some(version) => {
+                        if Version::parse(version).is_ok() {
+                            actions.package_exists(&app.name, version.as_str())?;
+                            Some(version.to_string())
+                        } else {
+                            let version = actions
+                                .find_installed_major_release(&app.name, version.as_str())?
+                                .ok_or(CyreneError::AppVersionNotFoundError(
+                                    version.to_string(),
+                                    app.name.to_string(),
+                                ))?;
 
-                    match ans {
-                        Ok(true) => {
-                            actions.uninstall(&app_install_opts.name, &version)?;
-                            println!("Uninstalled {} version {}", &app_install_opts.name, version);
+                            Some(version)
                         }
-                        Ok(false) => println!("Aborted"),
-                        Err(_) => println!("Cannot confirm or deny uninstallation"),
                     }
-                } else {
-                    return Err(CyreneError::AppNotInstalledError(
-                        app_install_opts.name.clone(),
-                    ));
-                }
-                Ok(())
+                    None => None,
+                };
+                app_actions.push(AppVersion {
+                    name: app.name,
+                    version,
+                });
             }
-            None => {
-                let ans = Confirm::new(
-                    format!(
-                        "You are going to uninstall ALL versions of {}! Are you sure?",
-                        app_install_opts.name
+            if !app_actions.is_empty() {
+                println!("The following apps will be uninstalled:");
+                for app_action in &app_actions {
+                    println!(
+                        "    {}: {}",
+                        app_action.name,
+                        match &app_action.version {
+                            Some(ver) => ver,
+                            None => &"ALL".to_string(),
+                        }
                     )
-                    .as_str(),
-                )
-                .with_default(false)
-                .prompt();
+                }
+                let ans = Confirm::new("Are you sure?").with_default(false).prompt();
 
                 match ans {
                     Ok(true) => {
-                        actions.uninstall_all(&app_install_opts.name)?;
-                        println!("Uninstalled {}", &app_install_opts.name);
+                        for app_action in app_actions {
+                            match &app_action.version {
+                                Some(ver) => {
+                                    println!("Uninstalling {} version {}", &app_action.name, ver);
+                                    actions.uninstall(&app_action.name, ver)?;
+                                }
+                                None => {
+                                    println!("Uninstalling {}", &app_action.name);
+                                    actions.uninstall_all(&app_action.name)?;
+                                }
+                            };
+                        }
                     }
                     Ok(false) => println!("Aborted"),
                     Err(_) => println!("Cannot confirm or deny uninstallation"),
                 }
-                Ok(())
+            } else {
+                println!("No action needed");
             }
-        },
+            Ok(())
+        }
         Commands::List(app_version_opts) => {
             let apps: Vec<_> = actions
                 .list_apps()?
@@ -342,40 +394,59 @@ fn app_upgrade(
     actions: &mut CyreneManager,
     app_install_opts: &AppUpgradeOpts,
 ) -> Result<(), CyreneError> {
-    let old_version = match &app_install_opts.version {
-        Some(ver) => actions.find_installed_major_release(&app_install_opts.name, ver)?,
-        None => actions.find_installed_version(&app_install_opts.name)?,
+    let app_to_be_installed: Vec<_> = app_install_opts.apps.iter().map(AppVersion::from).collect();
+    let mut app_actions: Vec<AppVersionUpgradeAction> = Vec::new();
+    for app in app_to_be_installed {
+        let old_version = match &app.version {
+            Some(ver) => actions.find_installed_major_release(&app.name, ver)?,
+            None => actions.find_installed_version(&app.name)?,
+        }
+        .ok_or(CyreneError::AppNotInstalledError(app.name.to_string()))?;
+        let new_version = actions
+            .get_latest_major_release(&app.name, &old_version)?
+            .ok_or(CyreneError::AppVersionNotFoundError(
+                app.name.clone(),
+                old_version.clone(),
+            ))?;
+        if old_version.eq(&new_version) {
+            println!("{} is at latest version {}", &app.name, new_version);
+        } else {
+            app_actions.push(AppVersionUpgradeAction {
+                name: app.name,
+                old_version,
+                new_version,
+            })
+        }
     }
-    .ok_or(CyreneError::AppNotInstalledError(
-        app_install_opts.name.clone(),
-    ))?;
-    let new_version = actions
-        .get_latest_major_release(&app_install_opts.name, &old_version)?
-        .ok_or(CyreneError::AppVersionNotFoundError(
-            app_install_opts.name.clone(),
-            old_version.clone(),
-        ))?;
-    if old_version.eq(&new_version) {
-        println!(
-            "{} is at latest version {}",
-            &app_install_opts.name, new_version
-        );
-        return Ok(());
-    }
-    let ans = Confirm::new(
-        format!(
-            "You are going to upgrade {} version {} to {}. Are you sure?",
-            app_install_opts.name, old_version, new_version
-        )
-        .as_str(),
-    )
-    .with_default(false)
-    .prompt();
+    if !app_actions.is_empty() {
+        println!("The following apps will be upgraded:");
+        for app_action in &app_actions {
+            println!(
+                "    {}: {} -> {}",
+                app_action.name, app_action.old_version, app_action.new_version,
+            )
+        }
+        let ans = Confirm::new("Are you sure?").with_default(false).prompt();
 
-    match ans {
-        Ok(true) => actions.upgrade(&app_install_opts.name, &old_version, &new_version)?,
-        Ok(false) => println!("Aborted"),
-        Err(_) => println!("Cannot confirm or deny"),
+        match ans {
+            Ok(true) => {
+                for app_action in app_actions {
+                    println!(
+                        "Upgrading {} version {} -> {}",
+                        &app_action.name, &app_action.old_version, &app_action.new_version
+                    );
+                    actions.upgrade(
+                        &app_action.name,
+                        &app_action.old_version,
+                        &app_action.new_version,
+                    )?;
+                }
+            }
+            Ok(false) => println!("Aborted"),
+            Err(_) => println!("Cannot confirm or deny"),
+        }
+    } else {
+        println!("No action needed");
     }
     Ok(())
 }

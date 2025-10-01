@@ -48,6 +48,7 @@ impl CyreneLockfileManager {
             }
         }
         let version = lockfile.versions.get(name).map(|x| x.to_string());
+        debug!("lockfile found app {} version {:?}", &name, &version);
         Ok(version)
     }
 
