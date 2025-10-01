@@ -201,7 +201,7 @@ impl CyreneManager {
         version: &str,
         overwrite: bool,
     ) -> Result<bool, CyreneError> {
-        let mut plugin = self.load_plugin(&name)?;
+        let mut plugin = self.load_plugin(name)?;
         let not_overwritten_exists = self.link_plugin_binaries(&mut plugin, version, overwrite)?;
 
         Ok(not_overwritten_exists && !overwrite)
@@ -259,7 +259,7 @@ impl CyreneManager {
     }
 
     pub fn uninstall(&mut self, name: &str, version: &str) -> Result<(), CyreneError> {
-        let installation_path = self.dirs.installation_path(&name, version);
+        let installation_path = self.dirs.installation_path(name, version);
         if !fs::exists(&installation_path)? {
             return Err(CyreneError::AppVersionNotInstalledError);
         }
