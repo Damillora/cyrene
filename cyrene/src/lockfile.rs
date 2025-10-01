@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use log::debug;
 use serde::{Deserialize, Serialize};
 
 use crate::{errors::CyreneError, responses::CyreneAppItem};
@@ -68,7 +69,7 @@ impl CyreneLockfileManager {
                 lockfile
             }
         }
-        println!("Using lockfile {}", lockfile_path.to_string_lossy());
+        debug!("Using lockfile {}", lockfile_path.to_string_lossy());
         lockfile
             .versions
             .insert(name.to_owned(), version.to_owned());

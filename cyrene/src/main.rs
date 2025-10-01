@@ -108,7 +108,7 @@ pub struct AppVersionsOpts {
 #[derive(Args)]
 pub struct AppRefreshOpts {
     /// Name of app
-    name: String,
+    name: Option<String>,
 }
 #[derive(Args)]
 pub struct AppLoadOpts {
@@ -207,15 +207,24 @@ fn start() -> Result<(), CyreneError> {
             Ok(())
         }
         Commands::Unlink(app_install_opts) => {
+            println!(
+                "Unlinking app binaries for plugin {}",
+                &app_install_opts.name
+            );
             actions.unlink_binaries(&app_install_opts.name)?;
             Ok(())
         }
         Commands::Refresh(app_version_opts) => {
-            println!(
-                "Updating versions database for {}...",
-                &app_version_opts.name
-            );
-            actions.update_versions(&app_version_opts.name)
+            if let Some(name) = app_version_opts.name {
+                println!("Updating versions database for {}...", &name);
+                actions.update_versions(&name)
+            } else {
+                for app in actions.list_apps()? {
+                    println!("Updating versions database for {}...", &app);
+                    actions.update_versions(&app)?;
+                }
+                Ok(())
+            }
         }
         Commands::Upgrade(app_install_opts) => app_upgrade(&mut actions, &app_install_opts),
         Commands::Uninstall(app_install_opts) => match app_install_opts.version {
@@ -240,7 +249,10 @@ fn start() -> Result<(), CyreneError> {
                     .prompt();
 
                     match ans {
-                        Ok(true) => actions.uninstall(&app_install_opts.name, &version)?,
+                        Ok(true) => {
+                            actions.uninstall(&app_install_opts.name, &version)?;
+                            println!("Uninstalled {} version {}", &app_install_opts.name, version);
+                        }
                         Ok(false) => println!("Aborted"),
                         Err(_) => println!("Cannot confirm or deny uninstallation"),
                     }
@@ -261,7 +273,10 @@ fn start() -> Result<(), CyreneError> {
                 .prompt();
 
                 match ans {
-                    Ok(true) => actions.uninstall_all(&app_install_opts.name)?,
+                    Ok(true) => {
+                        actions.uninstall_all(&app_install_opts.name)?;
+                        println!("Uninstalled {}", &app_install_opts.name);
+                    }
                     Ok(false) => println!("Aborted"),
                     Err(_) => println!("Cannot confirm or deny uninstallation"),
                 }
@@ -270,9 +285,14 @@ fn start() -> Result<(), CyreneError> {
         },
         Commands::List(app_version_opts) => {
             let apps: Vec<_> = actions
-                .list()?
+                .list_apps()?
                 .iter()
-                .map(CyreneAppVersionsRow::from)
+                .flat_map(|f| {
+                    let versions = actions.list_installed_app_versions(&f).unwrap();
+                    let versions: Vec<_> =
+                        versions.iter().map(CyreneAppVersionsRow::from).collect();
+                    versions
+                })
                 .collect();
 
             tables::cyrene_app_versions_all(&apps, app_version_opts.long);
