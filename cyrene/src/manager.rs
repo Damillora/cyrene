@@ -60,6 +60,10 @@ impl CyreneManager {
                 plugin_name,
             ));
         }
+        debug!(
+            "Using installation dir {}",
+            installation_path.to_string_lossy()
+        );
 
         let binaries = plugin.binaries(version)?;
         let mut not_overwritten_exists = false;
@@ -70,18 +74,15 @@ impl CyreneManager {
             let mut exe_path = self.dirs.exe_dir.clone();
             exe_path.push(&bin_name);
 
-            if !fs::exists(&exe_path)? {
-                debug!(
-                    "linking {} to {}",
-                    exe_path.to_string_lossy(),
-                    canonical_path.to_string_lossy()
-                );
-                symlink::symlink_file(canonical_path, exe_path)?;
-            } else {
-                let symlink_path = fs::read_link(&exe_path)?;
+            if let Ok(metadata) = fs::metadata(&exe_path) {
+                let symlink_path = if metadata.is_symlink() {
+                    fs::read_link(&exe_path)?
+                } else {
+                    exe_path.clone()
+                };
                 if overwrite {
                     debug!(
-                        "overwriting {}  from {} to {}",
+                        "overwriting {} from {} to {}",
                         exe_path.to_string_lossy(),
                         symlink_path.to_string_lossy(),
                         canonical_path.to_string_lossy()
@@ -96,6 +97,13 @@ impl CyreneManager {
                         symlink_path.to_string_lossy()
                     );
                 }
+            } else {
+                debug!(
+                    "linking {} to {}",
+                    exe_path.to_string_lossy(),
+                    canonical_path.to_string_lossy()
+                );
+                symlink::symlink_file(canonical_path, exe_path)?;
             }
         }
 
