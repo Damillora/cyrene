@@ -1,7 +1,8 @@
 use std::{fs, path::PathBuf};
 
 use clap::{Args, Parser, Subcommand, command};
-use inquire::Confirm;
+use console::{Color, Style, style};
+use dialoguer::{Confirm, theme::ColorfulTheme};
 use miette::{ErrReport, IntoDiagnostic};
 use semver::Version;
 
@@ -162,6 +163,7 @@ fn start() -> Result<(), CyreneError> {
             let app_to_be_installed: Vec<_> =
                 app_install_opts.apps.iter().map(AppVersion::from).collect();
             let mut app_actions: Vec<AppVersionAction> = Vec::new();
+            let mut app_actions_unneeded: Vec<AppVersionAction> = Vec::new();
             for app in app_to_be_installed {
                 let install_version = if let Some(ver) = &app.version {
                     if Version::parse(ver).is_ok() {
@@ -178,10 +180,10 @@ fn start() -> Result<(), CyreneError> {
                     actions.get_latest_version(&app.name)?
                 };
                 if actions.package_exists(&app.name, &install_version)? {
-                    println!(
-                        "{} version {} is already installed",
-                        &app.name, install_version
-                    );
+                    app_actions_unneeded.push(AppVersionAction {
+                        name: app.name,
+                        version: install_version,
+                    });
                 } else {
                     app_actions.push(AppVersionAction {
                         name: app.name,
@@ -189,57 +191,64 @@ fn start() -> Result<(), CyreneError> {
                     });
                 }
             }
-
+            if !app_actions_unneeded.is_empty() {
+                println!();
+                tables::cyrene_app_install_unneeded(&app_actions_unneeded);
+            }
             if !app_actions.is_empty() {
-                println!("The following apps will be installed:");
-                for app_action in &app_actions {
-                    println!("    {}: {}", app_action.name, app_action.version)
-                }
-                let ans = Confirm::new("Are you sure?").with_default(false).prompt();
+                let len = app_actions.len();
+                println!();
+                tables::cyrene_app_install(&app_actions);
+                println!();
 
-                match ans {
-                    Ok(true) => {
-                        for app_action in app_actions {
-                            let linked_version =
-                                actions.find_installed_version(&app_action.name)?;
+                let mut theme = ColorfulTheme::default();
+                theme.prompt_style = Style::new().fg(Color::Color256(219));
+                if Confirm::with_theme(&theme)
+                    .default(false)
+                    .show_default(true)
+                    .wait_for_newline(true)
+                    .with_prompt(format!(
+                        "Proceed with {}?",
+                        style("installation").fg(Color::Green).bold()
+                    ))
+                    .interact()?
+                {
+                    for (i, app_action) in app_actions.iter().enumerate() {
+                        let linked_version = actions.find_installed_version(&app_action.name)?;
+                        println!(
+                            "[{}/{}] Installing {} version {}",
+                            i + 1,
+                            len,
+                            style(&app_action.name).fg(Color::Color256(219)).bold(),
+                            style(&app_action.version).fg(Color::Green).bold(),
+                        );
+                        actions.install_specific_version(&app_action.name, &app_action.version)?;
+                        if let Some(linked_version) = &linked_version
+                            && is_major_version_equal(&linked_version, &app_action.version)?
+                        {
+                            actions.update_lockfile(&app_action.name, Some(&app_action.version))?;
+                        } else if let None = linked_version {
+                            actions.update_lockfile(&app_action.name, Some(&app_action.version))?;
+                        }
+                        let not_overwritten_exists =
+                            actions.link_binaries(&app_action.name, &app_action.version, false)?;
+                        if not_overwritten_exists {
                             println!(
-                                "Installing {} version {}",
+                                "An existing version is already installed. {}:",
+                                style("To use the newly installed binaries, run").fg(Color::Yellow)
+                            );
+                            println!();
+                            println!(
+                                "    cyrene link {} {}",
                                 &app_action.name, &app_action.version
                             );
-                            actions
-                                .install_specific_version(&app_action.name, &app_action.version)?;
-                            if let Some(linked_version) = linked_version
-                                && is_major_version_equal(&linked_version, &app_action.version)?
-                            {
-                                actions
-                                    .update_lockfile(&app_action.name, Some(&app_action.version))?;
-                            } else {
-                                actions
-                                    .update_lockfile(&app_action.name, Some(&app_action.version))?;
-                            }
-                            let not_overwritten_exists = actions.link_binaries(
-                                &app_action.name,
-                                &app_action.version,
-                                false,
-                            )?;
-
-                            if not_overwritten_exists {
-                                println!(
-                                    "An existing version is already installed. To use the newly installed binaries, run:"
-                                );
-                                println!();
-                                println!(
-                                    "    cyrene link {} {}",
-                                    &app_action.name, &app_action.version
-                                );
-                            };
-                        }
+                        };
                     }
-                    Ok(false) => println!("Aborted"),
-                    Err(_) => println!("Cannot confirm or deny"),
+                } else {
+                    println!("{}", style("Aborted").fg(console::Color::Red))
                 }
             } else {
-                println!("No action needed");
+                println!("{}", style("No action needed").fg(console::Color::Green));
             }
 
             Ok(())
@@ -256,26 +265,51 @@ fn start() -> Result<(), CyreneError> {
             .ok_or(CyreneError::AppNotInstalledError(
                 app_install_opts.name.clone(),
             ))?;
+            println!(
+                "[{}/{}] Linking binaries for {} version {}",
+                1,
+                1,
+                style(&app_install_opts.name)
+                    .fg(Color::Color256(219))
+                    .bold(),
+                style(&version).fg(Color::Green).bold(),
+            );
             actions.link_binaries(&app_install_opts.name, &version, true)?;
             actions.update_lockfile(&app_install_opts.name, Some(&version))?;
             Ok(())
         }
         Commands::Unlink(app_install_opts) => {
             println!(
-                "Unlinking app binaries for plugin {}",
-                &app_install_opts.name
+                "[{}/{}] Unlinking binaries for {}",
+                1,
+                1,
+                style(&app_install_opts.name)
+                    .fg(Color::Color256(219))
+                    .bold()
             );
             actions.unlink_binaries(&app_install_opts.name)?;
             Ok(())
         }
         Commands::Refresh(app_version_opts) => {
             if let Some(name) = app_version_opts.name {
-                println!("Updating versions database for {}...", &name);
+                println!(
+                    "[{}/{}] Updating versions database for {}",
+                    1,
+                    1,
+                    style(&name).fg(Color::Color256(219)).bold()
+                );
                 actions.update_versions(&name)
             } else {
-                for app in actions.list_apps()? {
-                    println!("Updating versions database for {}...", &app);
-                    actions.update_versions(&app)?;
+                let list_apps = actions.list_apps()?;
+                let len = list_apps.len();
+                for (i, name) in list_apps.iter().enumerate() {
+                    println!(
+                        "[{}/{}] Updating versions database for {}",
+                        i + 1,
+                        len,
+                        style(&name).fg(Color::Color256(219)).bold()
+                    );
+                    actions.update_versions(name)?;
                 }
                 Ok(())
             }
@@ -310,39 +344,51 @@ fn start() -> Result<(), CyreneError> {
                 });
             }
             if !app_actions.is_empty() {
-                println!("The following apps will be uninstalled:");
-                for app_action in &app_actions {
-                    println!(
-                        "    {}: {}",
-                        app_action.name,
+                let len = app_actions.len();
+                println!();
+                tables::cyrene_app_remove(&app_actions);
+                println!();
+                let mut theme = ColorfulTheme::default();
+                theme.prompt_style = Style::new().fg(Color::Color256(219));
+                if Confirm::with_theme(&theme)
+                    .default(false)
+                    .show_default(true)
+                    .wait_for_newline(true)
+                    .with_prompt(format!(
+                        "Proceed with {}?",
+                        style("uninstallation").fg(Color::Red).bold()
+                    ))
+                    .interact()?
+                {
+                    for (i, app_action) in app_actions.iter().enumerate() {
                         match &app_action.version {
-                            Some(ver) => ver,
-                            None => &"ALL".to_string(),
-                        }
-                    )
-                }
-                let ans = Confirm::new("Are you sure?").with_default(false).prompt();
-
-                match ans {
-                    Ok(true) => {
-                        for app_action in app_actions {
-                            match &app_action.version {
-                                Some(ver) => {
-                                    println!("Uninstalling {} version {}", &app_action.name, ver);
-                                    actions.uninstall(&app_action.name, ver)?;
-                                }
-                                None => {
-                                    println!("Uninstalling {}", &app_action.name);
-                                    actions.uninstall_all(&app_action.name)?;
-                                }
-                            };
-                        }
+                            Some(ver) => {
+                                println!(
+                                    "[{}/{}] Uninstalling {} version {}",
+                                    i + 1,
+                                    style(len).fg(Color::Color256(219)),
+                                    style(&app_action.name).fg(Color::Color256(219)).bold(),
+                                    style(ver).fg(Color::Red).bold()
+                                );
+                                actions.uninstall(&app_action.name, ver)?;
+                            }
+                            None => {
+                                println!(
+                                    "[{}/{}] Uninstalling {} version {}",
+                                    i + 1,
+                                    style(len).fg(Color::Color256(219)),
+                                    style(&app_action.name).fg(Color::Color256(219)),
+                                    style("ALL").fg(Color::Red),
+                                );
+                                actions.uninstall_all(&app_action.name)?;
+                            }
+                        };
                     }
-                    Ok(false) => println!("Aborted"),
-                    Err(_) => println!("Cannot confirm or deny uninstallation"),
+                } else {
+                    println!("{}", style("Aborted").fg(console::Color::Red));
                 }
             } else {
-                println!("No action needed");
+                println!("{}", style("No action needed").fg(console::Color::Green));
             }
             Ok(())
         }
@@ -421,12 +467,19 @@ fn app_upgrade(
             .collect()
     };
     let mut app_actions: Vec<AppVersionUpgradeAction> = Vec::new();
+    let mut app_actions_unneeded: Vec<AppVersionUpgradeAction> = Vec::new();
     for app in app_to_be_installed {
         let old_version = match &app.version {
             Some(ver) => actions.find_installed_major_release(&app.name, ver)?,
             None => actions.find_installed_version(&app.name)?,
         }
-        .ok_or(CyreneError::AppNotInstalledError(app.name.to_string()))?;
+        .ok_or(CyreneError::AppVersionNotInstalledError(
+            match &app.version {
+                Some(ver) => ver.to_string(),
+                None => "latest".to_string(),
+            },
+            app.name.to_string(),
+        ))?;
         let new_version = actions
             .get_latest_major_release(&app.name, &old_version)?
             .ok_or(CyreneError::AppVersionNotFoundError(
@@ -434,7 +487,11 @@ fn app_upgrade(
                 old_version.clone(),
             ))?;
         if old_version.eq(&new_version) {
-            println!("{} is at latest version {}", &app.name, new_version);
+            app_actions_unneeded.push(AppVersionUpgradeAction {
+                name: app.name,
+                old_version,
+                new_version,
+            })
         } else {
             app_actions.push(AppVersionUpgradeAction {
                 name: app.name,
@@ -443,35 +500,47 @@ fn app_upgrade(
             })
         }
     }
+    if !app_actions_unneeded.is_empty() {
+        println!();
+        tables::cyrene_app_upgrade_unneeded(&app_actions_unneeded);
+    }
     if !app_actions.is_empty() {
-        println!("The following apps will be upgraded:");
-        for app_action in &app_actions {
-            println!(
-                "    {}: {} -> {}",
-                app_action.name, app_action.old_version, app_action.new_version,
-            )
-        }
-        let ans = Confirm::new("Are you sure?").with_default(false).prompt();
-
-        match ans {
-            Ok(true) => {
-                for app_action in app_actions {
-                    println!(
-                        "Upgrading {} version {} -> {}",
-                        &app_action.name, &app_action.old_version, &app_action.new_version
-                    );
-                    actions.upgrade(
-                        &app_action.name,
-                        &app_action.old_version,
-                        &app_action.new_version,
-                    )?;
-                }
+        let len = app_actions.len();
+        println!();
+        tables::cyrene_app_upgrade(&app_actions);
+        println!();
+        let mut theme = ColorfulTheme::default();
+        theme.prompt_style = Style::new().fg(Color::Color256(219));
+        if Confirm::with_theme(&theme)
+            .default(false)
+            .show_default(true)
+            .wait_for_newline(true)
+            .with_prompt(format!(
+                "Proceed with {}?",
+                style("upgrade").fg(Color::Green).bold()
+            ))
+            .interact()?
+        {
+            for (i, app_action) in app_actions.iter().enumerate() {
+                println!(
+                    "[{}/{}] Upgrading {} version {} -> {}",
+                    i + 1,
+                    style(len).fg(Color::Color256(219)),
+                    style(&app_action.name).fg(Color::Color256(219)).bold(),
+                    style(&app_action.old_version).fg(Color::Red).bold(),
+                    style(&app_action.new_version).fg(Color::Green).bold()
+                );
+                actions.upgrade(
+                    &app_action.name,
+                    &app_action.old_version,
+                    &app_action.new_version,
+                )?;
             }
-            Ok(false) => println!("Aborted"),
-            Err(_) => println!("Cannot confirm or deny"),
+        } else {
+            println!("{}", style("Aborted").fg(console::Color::Red))
         }
     } else {
-        println!("No action needed");
+        println!("{}", style("No action needed").fg(console::Color::Green));
     }
     Ok(())
 }

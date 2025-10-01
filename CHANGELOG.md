@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Added
 - BREAKING Change: Install, upgrade, and uninstall multiple apps at once with `<plugin>@<version>` syntax.
 - `cyrene list`: Show linked versions as well.
+- Show progress of downloading sources.
+- Pretty CLI output
 
 ## Changed
 - Rework version handling

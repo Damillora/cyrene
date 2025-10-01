@@ -58,4 +58,6 @@ pub enum CyreneError {
     LockfileAppError(String),
     #[error("Cannot write lockfile: {0}")]
     LockfileWriteError(#[from] toml::ser::Error),
+    #[error("Console is interrupted: {0}")]
+    ConsoleInterruptedError(#[from] dialoguer::Error),
 }

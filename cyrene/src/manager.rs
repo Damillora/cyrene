@@ -307,6 +307,8 @@ impl CyreneManager {
                 self.link_binaries(name, &get_release, true)?;
                 self.update_lockfile(name, Some(&get_release))?;
             } else {
+                let installation_root = self.dirs.installation_root(&name);
+                fs::remove_dir(installation_root)?;
                 self.update_lockfile(name, None)?;
             }
         }

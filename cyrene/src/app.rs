@@ -87,9 +87,9 @@ impl CyreneApp {
     ) -> Result<(), CyreneError> {
         std::env::set_current_dir(installation_dir)?;
         debug!(
-            "Installing {} version {} to {}",
-            self.plugin_name,
+            "Installing app version {} from plugin {} to {}",
             version,
+            self.plugin_name,
             installation_dir.to_string_lossy()
         );
         self.script_vm.call(
@@ -111,8 +111,8 @@ impl CyreneApp {
 
     pub fn binaries(&mut self, version: &str) -> Result<Vec<(String, String)>, CyreneError> {
         debug!(
-            "Listing binaries of {} version {}",
-            self.plugin_name, version
+            "Listing binaries for app version {} from plugin {}",
+            version, self.plugin_name
         );
         let result = self.script_vm.call(
             ["binaries"],
