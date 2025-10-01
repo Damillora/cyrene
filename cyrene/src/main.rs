@@ -98,7 +98,7 @@ pub struct AppInstallOpts {
 #[derive(Args)]
 pub struct AppUpgradeOpts {
     /// Name of app
-    apps: Vec<String>,
+    apps: Option<Vec<String>>,
 }
 
 #[derive(Args)]
@@ -394,7 +394,18 @@ fn app_upgrade(
     actions: &mut CyreneManager,
     app_install_opts: &AppUpgradeOpts,
 ) -> Result<(), CyreneError> {
-    let app_to_be_installed: Vec<_> = app_install_opts.apps.iter().map(AppVersion::from).collect();
+    let app_to_be_installed: Vec<_> = if let Some(apps) = app_install_opts.apps {
+        apps.iter().map(AppVersion::from).collect()
+    } else {
+        actions
+            .list_apps()?
+            .iter()
+            .map(|f| AppVersion {
+                name: f.to_string(),
+                version: None,
+            })
+            .collect()
+    };
     let mut app_actions: Vec<AppVersionUpgradeAction> = Vec::new();
     for app in app_to_be_installed {
         let old_version = match &app.version {
