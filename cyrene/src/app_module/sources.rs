@@ -6,7 +6,7 @@ use tar::Archive;
 use xz::read::XzDecoder;
 
 #[rune::function]
-fn from_tar_xz(url: String) {
+fn from_tar_xz(url: &str) {
     let client = reqwest::blocking::Client::new();
     let res = client.get(url).send().unwrap();
     let tar_xz = XzDecoder::new(res);
@@ -14,7 +14,7 @@ fn from_tar_xz(url: String) {
     tar.unpack(".").unwrap();
 }
 #[rune::function]
-fn from_tar_gz(url: String) {
+fn from_tar_gz(url: &str) {
     let client = reqwest::blocking::Client::new();
     let res = client.get(url).send().unwrap();
     let tar_gz = GzDecoder::new(res);
@@ -22,9 +22,9 @@ fn from_tar_gz(url: String) {
     tar.unpack(".").unwrap();
 }
 #[rune::function]
-fn from_file(url: String) {
+fn from_file(url: &str) {
     let client = reqwest::blocking::Client::new();
-    let mut res = client.get(&url).send().unwrap();
+    let mut res = client.get(url).send().unwrap();
     let target_filename = url
         .trim_end_matches('/')
         .split('/')
@@ -35,9 +35,9 @@ fn from_file(url: String) {
     std::io::copy(&mut res, &mut file).unwrap();
 }
 #[rune::function]
-fn from_file_dest(url: String, dest: String) {
+fn from_file_dest(url: &str, dest: &str) {
     let client = reqwest::blocking::Client::new();
-    let mut res = client.get(&url).send().unwrap();
+    let mut res = client.get(url).send().unwrap();
     let mut file = File::create(dest).unwrap();
     std::io::copy(&mut res, &mut file).unwrap();
 }

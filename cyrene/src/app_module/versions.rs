@@ -9,7 +9,7 @@ struct GitHubVersion {
 }
 
 #[rune::function]
-fn from_github(repo: String) -> Vec<String> {
+fn from_github(repo: &str) -> Vec<String> {
     let mut headers = header::HeaderMap::new();
     headers.insert("Accept", "application/vnd.github+json".parse().unwrap());
     headers.insert("X-GitHub-Api-Version", "2022-11-28".parse().unwrap());
@@ -51,7 +51,7 @@ fn from_github(repo: String) -> Vec<String> {
 }
 
 #[rune::function]
-fn from_json(url: String) -> Value {
+fn from_json(url: &str) -> Value {
     let mut headers = header::HeaderMap::new();
     headers.insert("User-Agent", "damillora-cyrene".parse().unwrap());
     debug!("Getting release info from {}", url);

@@ -1,8 +1,8 @@
 use rune::{ContextError, Module};
 
 #[rune::function(instance)]
-fn strip_prefix(value: &str, trim: String) -> String {
-    value.trim_start_matches(&trim).to_string()
+fn strip_prefix(value: &str, trim: &str) -> String {
+    value.trim_start_matches(trim).to_string()
 }
 
 pub fn module() -> Result<Module, ContextError> {
