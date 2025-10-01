@@ -167,7 +167,7 @@ fn start() -> Result<(), CyreneError> {
                 match ans {
                     Ok(true) => actions.install(&app_install_opts.name, &install_version)?,
                     Ok(false) => println!("Aborted"),
-                    Err(_) => println!("Cannot confirm or deny uninstallation"),
+                    Err(_) => println!("Cannot confirm or deny"),
                 }
             }
 
@@ -327,7 +327,7 @@ fn app_upgrade(
     match ans {
         Ok(true) => actions.upgrade(&app_install_opts.name, &old_version, &new_version)?,
         Ok(false) => println!("Aborted"),
-        Err(_) => println!("Cannot confirm or deny uninstallation"),
+        Err(_) => println!("Cannot confirm or deny"),
     }
     Ok(())
 }
