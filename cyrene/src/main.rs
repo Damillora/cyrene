@@ -342,7 +342,7 @@ fn app_upgrade(
                 let old_version = get_release.as_str();
                 let new_version =
                     actions.get_latest_major_release(&app_install_opts.name, old_version)?;
-                if util::is_version_equal(old_version, &new_version)? {
+                if old_version.eq(&new_version) {
                     println!(
                         "{} is at latest version {}",
                         &app_install_opts.name, new_version
@@ -380,7 +380,7 @@ fn app_upgrade(
             let old_version = actions.get_current_version(&app_install_opts.name)?;
             let new_version =
                 actions.get_latest_major_release(&app_install_opts.name, &old_version)?;
-            if util::is_version_equal(&old_version, &new_version)? {
+            if old_version.eq(&new_version) {
                 println!(
                     "{} is at latest version {}",
                     &app_install_opts.name, new_version
