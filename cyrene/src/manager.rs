@@ -1,22 +1,20 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use log::debug;
 use semver::{Version, VersionReq};
 
 use crate::{
-    app::CyreneApp,
-    dirs::CyreneDirs,
-    errors::CyreneError,
-    lockfile::{self, use_default_lockfile, use_local_lockfile},
-    responses::CyreneAppItem,
-    versions_cache::{self, CyreneVersionCacheManager},
+    app::CyreneApp, dirs::CyreneDirs, errors::CyreneError, lockfile::CyreneLockfileManager,
+    responses::CyreneAppItem, versions_cache::CyreneVersionCacheManager,
 };
 
 pub struct CyreneManager {
-    dirs: Box<CyreneDirs>,
+    dirs: Arc<CyreneDirs>,
+    lockfile: Box<CyreneLockfileManager>,
     version_cache: Box<CyreneVersionCacheManager>,
 }
 
@@ -42,95 +40,25 @@ impl CyreneManager {
 
         None
     }
-}
-
-impl CyreneManager {
-    pub fn new() -> Result<Self, CyreneError> {
-        let dirs = Box::new(CyreneDirs::default());
-        dirs.init_dirs()?;
-
-        let cache_manager = Box::new(CyreneVersionCacheManager::new(&dirs.version_cache_path));
-
-        Ok(Self {
-            dirs,
-            version_cache: cache_manager,
-        })
-    }
-    fn load_plugin(&self, name: &str) -> Result<Box<CyreneApp>, CyreneError> {
-        let plugin_path = self.get_plugin_script(name);
-        CyreneApp::new(&plugin_path)
-    }
-    pub fn list(&self) -> Result<Vec<CyreneAppItem>, CyreneError> {
-        let apps = self.get_all_apps()?;
-        Ok(apps)
-    }
-
-    pub fn versions(&self, name: &str) -> Result<Vec<String>, CyreneError> {
-        let versions = self.version_cache.get_versions(name)?;
-        if versions.is_empty() {
-            self.update_versions(name)?;
-            return self.version_cache.get_versions(name);
-        }
-        Ok(versions)
-    }
-
-    pub fn update_versions(&self, name: &str) -> Result<(), CyreneError> {
-        let mut plugin = self.load_plugin(name)?;
-        let versions = plugin
-            .get_versions()?
-            .iter()
-            .map(|f| f.to_string())
-            .collect();
-        self.version_cache.update_version_cache(name, versions)?;
-        Ok(())
-    }
-    pub fn install(&self, name: &str, version: &str) -> Result<(), CyreneError> {
-        self.install_specific_version(name, version)?;
-        self.link_binaries(name, version, false, true)?;
-
-        Ok(())
-    }
-
-    fn install_specific_version(
+    /// Link all binaries for a specific version installed by this plugin
+    /// Returns a bool whether binaries are actually linked, or if there are existing links
+    fn link_plugin_binaries(
         &self,
-        name: &str,
-        required_version: &str,
-    ) -> Result<(), CyreneError> {
-        let mut plugin = self.load_plugin(name)?;
-
-        println!(
-            "Installing {} version {}",
-            plugin.app_name(),
-            required_version
-        );
-        // $CYRENE_APPS_DIR/app_name-app_version
-        let installation_path = self
-            .dirs
-            .installation_path(&plugin.app_name(), required_version.to_string().as_str());
-        fs::create_dir_all(&installation_path)?;
-
-        plugin.install_version(&installation_path, required_version.to_string().as_str())?;
-
-        Ok(())
-    }
-
-    pub fn link_binaries(
-        &self,
-        name: &str,
+        plugin: &mut CyreneApp,
         version: &str,
         overwrite: bool,
-        update_lockfile: bool,
-    ) -> Result<(), CyreneError> {
-        let plugin = self.load_plugin(&name)?;
-        let plugin_name = plugin.app_name();
-        println!("Using app version {} for plugin {}", version, plugin_name);
+    ) -> Result<bool, CyreneError> {
+        let plugin_name = plugin.plugin_name();
+        println!("Using app version {} for plugin {}", version, &plugin_name);
 
         let installation_path = self.dirs.installation_path(&plugin_name, version);
         if !fs::exists(&installation_path)? {
             return Err(CyreneError::AppVersionNotInstalledError);
         }
+
         let binaries = plugin.binaries(version)?;
         let mut not_overwritten_exists = false;
+
         for (bin_name, bin_path) in binaries {
             let mut canonical_path = installation_path.clone();
             canonical_path.push(&bin_path);
@@ -165,32 +93,21 @@ impl CyreneManager {
                 }
             }
         }
-        if not_overwritten_exists && !overwrite {
-            println!(
-                "An existing version is already installed. To use the newly installed binaries, run:"
-            );
-            println!();
-            println!("    cyrene link {} {}", plugin_name, version);
-        } else if update_lockfile {
-            let lockfile = self.dirs.lockfile_path();
-            lockfile::update_lockfile(&lockfile, name, version)?;
-        }
 
-        Ok(())
+        Ok(not_overwritten_exists)
     }
 
-    pub fn unlink_binaries(&self, name: &str) -> Result<(), CyreneError> {
-        let lockfile = self.dirs.lockfile_path();
-        let version = lockfile::find_installed_version_from_lockfile(&lockfile, name)?
-            .ok_or(CyreneError::AppVersionNotInLockfileError)?;
-
-        let mut plugin = self.load_plugin(name)?;
-        let plugin_name = plugin.app_name();
-        let installation_path = self.dirs.installation_path(&plugin_name, version.as_str());
+    fn unlink_plugin_binaries(
+        &mut self,
+        plugin: &mut CyreneApp,
+        version: &str,
+    ) -> Result<(), CyreneError> {
+        let plugin_name = plugin.plugin_name();
+        let installation_path = self.dirs.installation_path(&plugin_name, version);
         if !fs::exists(&installation_path)? {
             return Err(CyreneError::AppVersionNotInstalledError);
         }
-        let binaries = plugin.binaries(version.as_str())?;
+        let binaries = plugin.binaries(version)?;
 
         for (bin_name, bin_path) in binaries {
             let mut canonical_path = installation_path.clone();
@@ -205,6 +122,100 @@ impl CyreneManager {
         }
         Ok(())
     }
+}
+
+impl CyreneManager {
+    pub fn new() -> Result<Self, CyreneError> {
+        let dirs = Arc::new(CyreneDirs::default());
+        dirs.init_dirs()?;
+
+        let cache_manager = Box::new(CyreneVersionCacheManager::new(&dirs.version_cache_path));
+        let lockfile_manager = Box::new(CyreneLockfileManager::new(&dirs.lockfile_path()));
+        Ok(Self {
+            dirs,
+            lockfile: lockfile_manager,
+            version_cache: cache_manager,
+        })
+    }
+    fn load_plugin(&self, name: &str) -> Result<Box<CyreneApp>, CyreneError> {
+        let plugin_path = self.get_plugin_script(name);
+        CyreneApp::new(&plugin_path)
+    }
+
+    pub fn list(&self) -> Result<Vec<CyreneAppItem>, CyreneError> {
+        let apps = self.get_all_apps()?;
+        Ok(apps)
+    }
+
+    pub fn versions(&self, name: &str) -> Result<Vec<String>, CyreneError> {
+        let versions = self.version_cache.get_versions(name)?;
+        if versions.is_empty() {
+            self.update_versions(name)?;
+            return self.version_cache.get_versions(name);
+        }
+        Ok(versions)
+    }
+
+    pub fn update_versions(&self, name: &str) -> Result<(), CyreneError> {
+        let mut plugin = self.load_plugin(name)?;
+        let versions = plugin
+            .get_versions()?
+            .iter()
+            .map(|f| f.to_string())
+            .collect();
+        self.version_cache.update_version_cache(name, versions)?;
+        Ok(())
+    }
+    pub fn install(&self, name: &str, version: &str) -> Result<(), CyreneError> {
+        self.install_specific_version(name, version)?;
+        self.link_binaries(name, version, false)?;
+        self.update_lockfile(name, version)?;
+
+        Ok(())
+    }
+
+    pub fn install_specific_version(
+        &self,
+        name: &str,
+        required_version: &str,
+    ) -> Result<(), CyreneError> {
+        let mut plugin = self.load_plugin(name)?;
+
+        // $CYRENE_APPS_DIR/app_name-app_version
+        let installation_path = self
+            .dirs
+            .installation_path(&plugin.plugin_name(), required_version.to_string().as_str());
+        fs::create_dir_all(&installation_path)?;
+
+        plugin.install_version(&installation_path, required_version.to_string().as_str())?;
+
+        Ok(())
+    }
+
+    pub fn update_lockfile(&self, name: &str, version: &str) -> Result<(), CyreneError> {
+        self.lockfile.update_lockfile(name, version)
+    }
+    pub fn link_binaries(
+        &self,
+        name: &str,
+        version: &str,
+        overwrite: bool,
+    ) -> Result<bool, CyreneError> {
+        let mut plugin = self.load_plugin(&name)?;
+        let not_overwritten_exists = self.link_plugin_binaries(&mut plugin, version, overwrite)?;
+
+        Ok(not_overwritten_exists && !overwrite)
+    }
+
+    pub fn unlink_binaries(&mut self, name: &str) -> Result<(), CyreneError> {
+        let version = self
+            .lockfile
+            .find_installed_version_from_lockfile(name)?
+            .ok_or(CyreneError::AppVersionNotInLockfileError)?;
+
+        let mut plugin = self.load_plugin(name)?;
+        self.unlink_plugin_binaries(&mut plugin, &version)
+    }
 
     pub fn package_exists(&self, name: &str, version: &str) -> Result<bool, CyreneError> {
         let installation_path = self.dirs.installation_path(name, version);
@@ -212,10 +223,7 @@ impl CyreneManager {
     }
 
     pub fn find_installed_version(&self, name: &str) -> Result<Option<String>, CyreneError> {
-        let lockfile = self.dirs.lockfile_path();
-        let current_version = lockfile::find_installed_version_from_lockfile(&lockfile, name)?;
-
-        Ok(current_version)
+        self.lockfile.find_installed_version_from_lockfile(name)
     }
 
     pub fn find_installed_major_release(
@@ -250,14 +258,15 @@ impl CyreneManager {
         Ok(fs::exists(&installation_path)?)
     }
 
-    pub fn uninstall(&self, name: &str, version: &str) -> Result<(), CyreneError> {
+    pub fn uninstall(&mut self, name: &str, version: &str) -> Result<(), CyreneError> {
         let installation_path = self.dirs.installation_path(&name, version);
         if !fs::exists(&installation_path)? {
             return Err(CyreneError::AppVersionNotInstalledError);
         }
 
-        let lockfile = self.dirs.lockfile_path();
-        let current_version = lockfile::find_installed_version_from_lockfile(&lockfile, name)?
+        let current_version = self
+            .lockfile
+            .find_installed_version_from_lockfile(name)?
             .ok_or(CyreneError::AppVersionNotInLockfileError)?;
         let uninstalled_is_linked_version = current_version.eq(version);
         if uninstalled_is_linked_version {
@@ -269,7 +278,8 @@ impl CyreneManager {
         if uninstalled_is_linked_version {
             let get_release = self.find_installed_major_release(name, "*")?;
             if let Some(get_release) = get_release {
-                self.link_binaries(name, &get_release, true, true)?;
+                self.link_binaries(name, &get_release, true)?;
+                self.update_lockfile(name, &get_release)?;
             }
         }
 
@@ -277,7 +287,7 @@ impl CyreneManager {
         Ok(())
     }
 
-    pub fn uninstall_all(&self, name: &str) -> Result<(), CyreneError> {
+    pub fn uninstall_all(&mut self, name: &str) -> Result<(), CyreneError> {
         let installation_path = self.dirs.installation_root(name);
         debug!("{}", installation_path.to_string_lossy());
         if !fs::exists(&installation_path)? {
@@ -293,26 +303,21 @@ impl CyreneManager {
     }
 
     pub fn upgrade(
-        &self,
+        &mut self,
         name: &str,
         old_version: &str,
         new_version: &str,
     ) -> Result<(), CyreneError> {
-        let current_installed = self.get_current_version(name)?;
+        let current_installed = self
+            .find_installed_version(name)?
+            .ok_or(CyreneError::LockfileAppVersionError)?;
         let overwrite_installed = current_installed.eq(old_version);
         self.install_specific_version(name, new_version)?;
-        self.link_binaries(name, new_version, overwrite_installed, true)?;
+        self.link_binaries(name, new_version, overwrite_installed)?;
+        self.update_lockfile(name, new_version)?;
         self.uninstall(name, old_version)?;
 
         Ok(())
-    }
-
-    pub fn get_current_version(&self, name: &str) -> Result<String, CyreneError> {
-        let lockfile = self.dirs.lockfile_path();
-        let old_version = lockfile::find_installed_version_from_lockfile(&lockfile, name)?
-            .ok_or(CyreneError::AppVersionNotInLockfileError)?;
-
-        Ok(old_version)
     }
 
     pub fn get_latest_major_release(
@@ -379,12 +384,11 @@ impl CyreneManager {
     }
 
     pub fn load_lockfile(&self, loaded_lockfile: Option<&Path>) -> Result<(), CyreneError> {
-        let default_lockfile = self.dirs.lockfile_path();
         match &loaded_lockfile {
-            Some(loaded_lockfile) => use_local_lockfile(&default_lockfile, loaded_lockfile)?,
-            None => use_default_lockfile(&default_lockfile)?,
+            Some(loaded_lockfile) => self.lockfile.use_local_lockfile(loaded_lockfile)?,
+            None => self.lockfile.use_default_lockfile()?,
         };
-        let lockfile_items = lockfile::load_versions_from_lockfile(&default_lockfile)?;
+        let lockfile_items = self.lockfile.load_versions_from_current_lockfile()?;
         if lockfile_items
             .iter()
             .any(|h| match self.verify_version_exists(&h.name, &h.version) {
@@ -398,7 +402,7 @@ impl CyreneManager {
             if !self.package_exists(&lockfile_item.name, &lockfile_item.version)? {
                 self.install_specific_version(&lockfile_item.name, &lockfile_item.version)?;
             }
-            self.link_binaries(&lockfile_item.name, &lockfile_item.version, true, false)?;
+            self.link_binaries(&lockfile_item.name, &lockfile_item.version, true)?;
         }
 
         Ok(())

@@ -127,7 +127,7 @@ fn start() -> Result<(), CyreneError> {
     env_logger::init();
     let cli = Cli::parse();
 
-    let actions = CyreneManager::new()?;
+    let mut actions = CyreneManager::new()?;
 
     match cli.command {
         Commands::Install(app_install_opts) => {
@@ -160,7 +160,31 @@ fn start() -> Result<(), CyreneError> {
                 .prompt();
 
                 match ans {
-                    Ok(true) => actions.install(&app_install_opts.name, &install_version)?,
+                    Ok(true) => {
+                        println!(
+                            "Installing {} version {}",
+                            &app_install_opts.name, &install_version
+                        );
+                        actions
+                            .install_specific_version(&app_install_opts.name, &install_version)?;
+                        actions.update_lockfile(&app_install_opts.name, &install_version)?;
+                        let not_overwritten_exists = actions.link_binaries(
+                            &app_install_opts.name,
+                            &install_version,
+                            false,
+                        )?;
+
+                        if not_overwritten_exists {
+                            println!(
+                                "An existing version is already installed. To use the newly installed binaries, run:"
+                            );
+                            println!();
+                            println!(
+                                "    cyrene link {} {}",
+                                &app_install_opts.name, &install_version
+                            );
+                        };
+                    }
                     Ok(false) => println!("Aborted"),
                     Err(_) => println!("Cannot confirm or deny"),
                 }
@@ -178,7 +202,8 @@ fn start() -> Result<(), CyreneError> {
                 )?
             }
             .ok_or(CyreneError::AppVersionNotInstalledError)?;
-            actions.link_binaries(&app_install_opts.name, &version, true, true)?;
+            actions.link_binaries(&app_install_opts.name, &version, true)?;
+            actions.update_lockfile(&app_install_opts.name, &version)?;
             Ok(())
         }
         Commands::Unlink(app_install_opts) => {
@@ -192,7 +217,7 @@ fn start() -> Result<(), CyreneError> {
             );
             actions.update_versions(&app_version_opts.name)
         }
-        Commands::Upgrade(app_install_opts) => app_upgrade(&actions, &app_install_opts),
+        Commands::Upgrade(app_install_opts) => app_upgrade(&mut actions, &app_install_opts),
         Commands::Uninstall(app_install_opts) => match app_install_opts.version {
             Some(version) => {
                 let version = if Version::parse(&version).is_ok() {
@@ -287,7 +312,7 @@ fn start() -> Result<(), CyreneError> {
 }
 
 fn app_upgrade(
-    actions: &CyreneManager,
+    actions: &mut CyreneManager,
     app_install_opts: &AppUpgradeOpts,
 ) -> Result<(), CyreneError> {
     let old_version = match &app_install_opts.version {

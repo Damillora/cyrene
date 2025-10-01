@@ -17,7 +17,7 @@ use crate::{
 
 pub struct CyreneApp {
     script_vm: Vm,
-    app_name: String,
+    plugin_name: String,
 }
 
 impl CyreneApp {
@@ -57,13 +57,13 @@ impl CyreneApp {
         let vm = Vm::new(runtime, unit);
 
         Ok(Box::new(Self {
-            app_name: String::from(app_name),
+            plugin_name: String::from(app_name),
             script_vm: vm,
         }))
     }
 
-    pub fn app_name(&self) -> String {
-        self.app_name.clone()
+    pub fn plugin_name(&self) -> String {
+        self.plugin_name.clone()
     }
 
     pub fn get_versions(&mut self) -> Result<Vec<String>, CyreneError> {
@@ -88,7 +88,7 @@ impl CyreneApp {
         std::env::set_current_dir(installation_dir)?;
         debug!(
             "Installing {} version {} to {}",
-            self.app_name,
+            self.plugin_name,
             version,
             installation_dir.to_string_lossy()
         );
@@ -110,7 +110,10 @@ impl CyreneApp {
     }
 
     pub fn binaries(&mut self, version: &str) -> Result<Vec<(String, String)>, CyreneError> {
-        debug!("Listing binaries of {} version {}", self.app_name, version);
+        debug!(
+            "Listing binaries of {} version {}",
+            self.plugin_name, version
+        );
         let result = self.script_vm.call(
             ["binaries"],
             (CyreneEnv {
