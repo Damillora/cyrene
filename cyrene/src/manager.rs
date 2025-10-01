@@ -12,7 +12,7 @@ use crate::{
     errors::CyreneError,
     lockfile::{self, use_default_lockfile, use_local_lockfile},
     responses::CyreneAppItem,
-    versions_cache::{self, get_versions},
+    versions_cache::{self},
 };
 
 pub struct CyreneManager {
@@ -238,7 +238,7 @@ impl CyreneManager {
         let plugin_path = self.get_plugin_script(name);
 
         let lockfile = self.lockfile_path();
-        let version = lockfile::get_current_version_from_lockfile(&lockfile, &name)?
+        let version = lockfile::find_installed_version_from_lockfile(&lockfile, &name)?
             .ok_or(CyreneError::AppVersionNotInLockfileError)?;
 
         let mut cyrene_app = CyreneApp::new(&plugin_path)?;
@@ -268,6 +268,13 @@ impl CyreneManager {
         let cyrene_app = CyreneApp::new(&plugin_path)?;
         let installation_path = self.installation_path(cyrene_app.app_name().as_str(), version);
         return Ok(fs::exists(&installation_path)?);
+    }
+
+    pub fn find_installed_version(&self, name: &str) -> Result<Option<String>, CyreneError> {
+        let lockfile = self.lockfile_path();
+        let current_version = lockfile::find_installed_version_from_lockfile(&lockfile, &name)?;
+
+        Ok(current_version)
     }
 
     pub fn find_installed_major_release(
@@ -317,7 +324,7 @@ impl CyreneManager {
         }
 
         let lockfile = self.lockfile_path();
-        let current_version = lockfile::get_current_version_from_lockfile(&lockfile, &name)?
+        let current_version = lockfile::find_installed_version_from_lockfile(&lockfile, &name)?
             .ok_or(CyreneError::AppVersionNotInLockfileError)?;
         let uninstalled_is_linked_version = current_version.eq(version);
         if uninstalled_is_linked_version {
@@ -372,7 +379,7 @@ impl CyreneManager {
 
     pub fn get_current_version(&self, name: &str) -> Result<String, CyreneError> {
         let lockfile = self.lockfile_path();
-        let old_version = lockfile::get_current_version_from_lockfile(&lockfile, &name)?
+        let old_version = lockfile::find_installed_version_from_lockfile(&lockfile, &name)?
             .ok_or(CyreneError::AppVersionNotInLockfileError)?;
 
         Ok(old_version)
@@ -382,15 +389,14 @@ impl CyreneManager {
         &self,
         name: &str,
         old_version: &str,
-    ) -> Result<String, CyreneError> {
+    ) -> Result<Option<String>, CyreneError> {
         let versions = self.versions(name)?;
 
         // Get needed version
-        let required_version = self
-            .search_in_version(versions, format!("^{}", old_version).as_str())
-            .ok_or(CyreneError::AppVersionNotFoundError)?;
+        let required_version =
+            self.search_in_version(versions, format!("{}", old_version).as_str());
 
-        Ok(required_version.to_string())
+        Ok(required_version)
     }
 
     pub fn get_latest_version(&self, name: &str) -> Result<String, CyreneError> {

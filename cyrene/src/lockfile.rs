@@ -22,7 +22,7 @@ impl CyreneLockfile {
     }
 }
 
-pub fn get_current_version_from_lockfile(
+pub fn find_installed_version_from_lockfile(
     lockfile_path: &Path,
     name: &str,
 ) -> Result<Option<String>, CyreneError> {
