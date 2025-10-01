@@ -29,6 +29,15 @@ cd cyrene
 cargo install --path cyrene
 ```
 
+### Managing cyrene with cyrene
+
+To manage `cyrene` with `cyrene` itself, first install `cyrene` version `0.2.3` or later, alongside the [cyrene](https://github.com/Damillora/cyrene-plugins/blob/main/cyrene.rn) plugin.
+
+After that, simply:
+```sh
+cyrene install cyrene
+```
+
 ## Usage
 
 [![asciicast](https://asciinema.org/a/2R58mjpKZ40Upx2KdiHdZ1fmx.svg)](https://asciinema.org/a/2R58mjpKZ40Upx2KdiHdZ1fmx)
