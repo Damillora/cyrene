@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
+## [0.2.3] - 2025-10-01
+
+### Fixed
+- Prevent `cyrene` from sacrificing herself to the Remembrance if `CYRENE_INSTALL_DIR` is unset and `cyrene` is trying to link binaries of itself.
+
 ## [0.2.2] - 2025-10-01
 
 ### Fixed
@@ -39,7 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extensible with scripts written in [Rune](https://rune-rs.github.io/)
 - Synchronize tool versions with `cyrene.toml` lockfiles
 
-[unreleased]: https://github.com/Damillora/cyrene/compare/v0.2.2...HEAD
+[unreleased]: https://github.com/Damillora/cyrene/compare/v0.2.3...HEAD
+[0.2.2]: https://github.com/Damillora/cyrene/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/Damillora/cyrene/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Damillora/cyrene/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Damillora/cyrene/compare/v0.1.0...v0.2.0

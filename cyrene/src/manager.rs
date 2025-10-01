@@ -73,6 +73,18 @@ impl CyreneManager {
             canonical_path.push(&bin_path);
             let mut exe_path = self.dirs.exe_dir.clone();
             exe_path.push(&bin_name);
+            debug!(
+                "Attempting to link {} to {}",
+                canonical_path.to_string_lossy(),
+                exe_path.to_string_lossy()
+            );
+
+            // Sanity check
+            let current_exe = std::env::current_exe()?;
+            if current_exe.eq(&exe_path) {
+                // Stop Cyrene from sacrificing herself to the Remembrance
+                return Err(CyreneError::AppLinkingToItselfError);
+            }
 
             if let Ok(metadata) = fs::metadata(&exe_path) {
                 let symlink_path = if metadata.is_symlink() {

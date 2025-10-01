@@ -60,4 +60,6 @@ pub enum CyreneError {
     LockfileWriteError(#[from] toml::ser::Error),
     #[error("Console is interrupted: {0}")]
     ConsoleInterruptedError(#[from] dialoguer::Error),
+    #[error("Cyrene was about to sacrifice itself to the Remembrance")]
+    AppLinkingToItselfError,
 }
