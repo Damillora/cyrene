@@ -223,7 +223,7 @@ impl CyreneManager {
         let version = self
             .lockfile
             .find_installed_version_from_lockfile(name)?
-            .ok_or(CyreneError::AppVersionNotInLockfileError)?;
+            .ok_or(CyreneError::AppNotInLockfileError(name.to_string()))?;
 
         let mut plugin = self.load_plugin(name)?;
         self.unlink_plugin_binaries(&mut plugin, &version)
@@ -283,7 +283,7 @@ impl CyreneManager {
         let current_version = self
             .lockfile
             .find_installed_version_from_lockfile(name)?
-            .ok_or(CyreneError::AppVersionNotInLockfileError)?;
+            .ok_or(CyreneError::AppNotInLockfileError(name.to_string()))?;
         let uninstalled_is_linked_version = current_version.eq(version);
         if uninstalled_is_linked_version {
             debug!(
@@ -335,7 +335,7 @@ impl CyreneManager {
         );
         let current_installed = self
             .find_installed_version(name)?
-            .ok_or(CyreneError::LockfileAppVersionError)?;
+            .ok_or(CyreneError::LockfileAppError(name.to_string()))?;
         let overwrite_installed = current_installed.eq(old_version);
         self.install_specific_version(name, new_version)?;
         self.link_binaries(name, new_version, overwrite_installed)?;
@@ -416,14 +416,18 @@ impl CyreneManager {
             None => self.lockfile.use_default_lockfile()?,
         };
         let lockfile_items = self.lockfile.load_versions_from_current_lockfile()?;
-        if lockfile_items
-            .iter()
-            .any(|h| match self.verify_version_exists(&h.name, &h.version) {
-                Ok(t) => !t,
-                Err(_) => true,
-            })
+        if let Some(nonexistent_app) =
+            lockfile_items
+                .iter()
+                .find(|h| match self.verify_version_exists(&h.name, &h.version) {
+                    Ok(t) => !t,
+                    Err(_) => true,
+                })
         {
-            return Err(CyreneError::LockfileAppVersionError);
+            return Err(CyreneError::LockfileAppVersionError(
+                nonexistent_app.version.to_string(),
+                nonexistent_app.name.to_string(),
+            ));
         }
         for lockfile_item in lockfile_items {
             if !self.package_exists(&lockfile_item.name, &lockfile_item.version)? {
