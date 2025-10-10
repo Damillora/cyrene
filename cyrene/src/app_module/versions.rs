@@ -18,7 +18,7 @@ fn from_github(repo: &str) -> Vec<String> {
     let mut versions: Vec<String> = Vec::new();
     let mut still_more_stuff = true;
     let mut page = 1;
-    while still_more_stuff {
+    while still_more_stuff && page <= 10 {
         let client = reqwest::blocking::Client::new();
         debug!(
             "Calling https://api.github.com/repos/{}/releases?per_page=100&page={}",

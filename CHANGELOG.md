@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Add lockfile switch to toggle disabling major version checks when upgrading.
 
+### Fixed
+- GitHub limits to first 1000 tags available, so search only first 1000 results.
+
 ## [0.2.3] - 2025-10-01
 
 ### Fixed
