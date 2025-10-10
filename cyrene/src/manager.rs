@@ -372,6 +372,11 @@ impl CyreneManager {
         Ok(())
     }
 
+    pub fn check_upgrade_latest(&self, name: &str) -> Result<bool, CyreneError> {
+        let upgrade_latest = self.lockfile.find_upgrade_latest_from_lockfile(name)?;
+
+        Ok(upgrade_latest)
+    }
     pub fn get_latest_major_release(
         &self,
         name: &str,

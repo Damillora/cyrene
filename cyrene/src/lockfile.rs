@@ -11,6 +11,7 @@ use crate::{errors::CyreneError, responses::CyreneAppItem};
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct CyreneLockfile {
+    pub upgrade_latest: BTreeMap<String, bool>,
     pub versions: BTreeMap<String, String>,
     pub loaded_lockfile: Option<String>,
 }
@@ -50,6 +51,34 @@ impl CyreneLockfileManager {
         let version = lockfile.versions.get(name).map(|x| x.to_string());
         debug!("lockfile found app {} version {:?}", &name, &version);
         Ok(version)
+    }
+
+    pub fn find_upgrade_latest_from_lockfile(&self, name: &str) -> Result<bool, CyreneError> {
+        let mut lockfile = if !fs::exists(&self.lockfile_path)? {
+            CyreneLockfile::default()
+        } else {
+            let lockfile_read = fs::read_to_string(&self.lockfile_path)?;
+            let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
+            lockfile
+        };
+        if let Some(loaded_lockfile) = lockfile.loaded_lockfile {
+            // Merge global lockfile with local ones
+            let new_lockfile = {
+                let lockfile_read = fs::read_to_string(&loaded_lockfile)?;
+                let new_lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
+
+                new_lockfile
+            };
+            for (key, value) in new_lockfile.versions {
+                lockfile.versions.insert(key, value);
+            }
+        }
+        let upgrade_latest = lockfile.upgrade_latest.get(name).unwrap_or(&false);
+        debug!(
+            "lockfile found app {} upgrade latest {:?}",
+            &name, &upgrade_latest
+        );
+        Ok(*upgrade_latest)
     }
 
     pub fn update_lockfile(&self, name: &str, version: Option<&str>) -> Result<(), CyreneError> {

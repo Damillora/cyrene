@@ -489,9 +489,11 @@ fn app_upgrade(
             },
             app.name.to_string(),
         ))?;
-        let new_version = match &app.version {
-            Some(ver) => actions.get_latest_major_release(&app.name, &ver)?,
-            None => actions.get_latest_major_release(&app.name, &old_version)?,
+        let upgrade_latest = actions.check_upgrade_latest(&app.name)?;
+        let new_version = if upgrade_latest {
+            actions.get_latest_major_release(&app.name, "*")?
+        } else {
+            actions.get_latest_major_release(&app.name, &old_version)?
         }
         .ok_or(CyreneError::AppVersionNotFoundError(
             app.name.clone(),
