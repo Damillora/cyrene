@@ -6,6 +6,7 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 struct GitHubVersion {
     tag_name: String,
+    prerelease: bool,
 }
 
 #[rune::function]
@@ -35,6 +36,7 @@ fn from_github(repo: &str) -> Vec<String> {
         let a: Vec<GitHubVersion> = res.json().unwrap();
         let mut a: Vec<String> = a
             .iter()
+            .filter(|f| f.prerelease == false)
             .map(|f| {
                 debug!("found version: {}", f.tag_name);
                 f.tag_name.to_string()
