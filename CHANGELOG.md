@@ -4,10 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 ## [Unreleased]
 
+## [0.3.0] - 2025-10-14
+
 ### Changed
-- Add lockfile switch to toggle disabling major version checks when upgrading.
+- BREAKING CHANGE: Add lockfile switch to toggle disabling major version checks when upgrading.
 
 ### Fixed
 - GitHub limits to first 1000 tags available, so search only first 1000 results.
@@ -51,8 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extensible with scripts written in [Rune](https://rune-rs.github.io/)
 - Synchronize tool versions with `cyrene.toml` lockfiles
 
-[unreleased]: https://github.com/Damillora/cyrene/compare/v0.2.3...HEAD
-[0.2.2]: https://github.com/Damillora/cyrene/compare/v0.2.2...v0.2.3
+[unreleased]: https://github.com/Damillora/cyrene/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Damillora/cyrene/compare/v0.2.3...v0.3.0
+[0.2.3]: https://github.com/Damillora/cyrene/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/Damillora/cyrene/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Damillora/cyrene/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Damillora/cyrene/compare/v0.1.0...v0.2.0
