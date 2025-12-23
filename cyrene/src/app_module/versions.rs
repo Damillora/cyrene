@@ -33,6 +33,7 @@ fn from_github(repo: &str) -> Vec<String> {
             .headers(headers.clone())
             .send()
             .unwrap();
+        let res = res.error_for_status().unwrap();
         let a: Vec<GitHubVersion> = res.json().unwrap();
         let mut a: Vec<String> = a
             .iter()
