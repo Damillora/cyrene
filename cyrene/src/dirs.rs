@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf};
 
 use directories::ProjectDirs;
+use log::debug;
 
 use crate::errors::CyreneError;
 
@@ -14,10 +15,15 @@ pub struct CyreneDirs {
 }
 impl CyreneDirs {
     pub fn init_dirs(&self) -> Result<(), CyreneError> {
+        debug!("Creating {}", &self.apps_dir.display());
         fs::create_dir_all(&self.apps_dir)?;
+        debug!("Creating {}", &self.plugins_dir.display());
         fs::create_dir_all(&self.plugins_dir)?;
+        debug!("Creating {}", &self.config_dir.display());
         fs::create_dir_all(&self.config_dir)?;
+        debug!("Creating {}", &self.cache_dir.display());
         fs::create_dir_all(&self.cache_dir)?;
+        debug!("Creating {}", &self.exe_dir.display());
         fs::create_dir_all(&self.exe_dir)?;
 
         Ok(())
