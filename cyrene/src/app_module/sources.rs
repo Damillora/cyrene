@@ -7,7 +7,9 @@ use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressStyle};
 use rune::{ContextError, Module};
 use tar::Archive;
+use tempfile::tempfile;
 use xz::read::XzDecoder;
+use zip::ZipArchive;
 struct UploadProgress<R> {
     inner: R,
     total: u64,
@@ -84,6 +86,27 @@ fn from_tar_gz(url: &str) {
     tar.unpack(".").unwrap();
 }
 #[rune::function]
+fn from_zip(url: &str) {
+    let target_filename = url
+        .trim_end_matches('/')
+        .split('/')
+        .next_back()
+        .unwrap()
+        .to_string();
+    let client = reqwest::blocking::Client::new();
+    let res = client.get(url).send().unwrap();
+    let len = res.content_length();
+    let mut res: Box<dyn Read> = if let Some(len) = len {
+        Box::new(UploadProgress::new(res, &target_filename, len))
+    } else {
+        Box::new(res)
+    };
+    let mut temp_file = tempfile().unwrap();
+    std::io::copy(&mut res, &mut temp_file).unwrap();
+    let mut zip_file = ZipArchive::new(temp_file).unwrap();
+    zip_file.extract(".").unwrap();
+}
+#[rune::function]
 fn from_file(url: &str) {
     let target_filename = url
         .trim_end_matches('/')
@@ -126,6 +149,7 @@ pub fn module() -> Result<Module, ContextError> {
     let mut m = Module::with_crate("sources")?;
     m.function_meta(from_tar_xz)?;
     m.function_meta(from_tar_gz)?;
+    m.function_meta(from_zip)?;
     m.function_meta(from_file)?;
     m.function_meta(from_file_dest)?;
     Ok(m)

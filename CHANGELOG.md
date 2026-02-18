@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Install binaries from ZIP files.
+
+### Changed
+- Make version fetching from GitHub releases a bit more smart.
+
 ## [0.3.0] - 2025-10-14
 
 ### Changed

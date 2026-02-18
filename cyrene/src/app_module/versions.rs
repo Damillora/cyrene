@@ -2,6 +2,7 @@ use log::debug;
 use reqwest::header;
 use rune::{ContextError, Module, Value};
 use serde::Deserialize;
+use regex::Regex;
 
 #[derive(Deserialize)]
 struct GitHubVersion {
@@ -19,6 +20,9 @@ fn from_github(repo: &str) -> Vec<String> {
     let mut versions: Vec<String> = Vec::new();
     let mut still_more_stuff = true;
     let mut page = 1;
+
+    let ver_regex = Regex::new(r"(.*)-v?([0-9\.]*)").unwrap();
+
     while still_more_stuff && page <= 10 {
         let client = reqwest::blocking::Client::new();
         debug!(
@@ -40,7 +44,13 @@ fn from_github(repo: &str) -> Vec<String> {
             .filter(|f| f.prerelease == false)
             .map(|f| {
                 debug!("found version: {}", f.tag_name);
-                f.tag_name.to_string()
+                let mut tag_name = f.tag_name.to_string();
+                if let Some(captures) = ver_regex.captures(&tag_name)
+                    && let Some(ver_name) = captures.get(2)
+                {
+                    tag_name = String::from(ver_name.as_str())
+                }
+                tag_name
             })
             .collect();
         if a.len() < 100 {
