@@ -7,7 +7,7 @@ use tabled::{
     },
 };
 
-use crate::{AppVersion, AppVersionAction, AppVersionUpgradeAction, responses::CyreneAppItem};
+use crate::{AppVersion, AppVersionAction, AppVersionUpgradeAction};
 
 #[derive(Tabled)]
 #[tabled(rename_all = "Upper Title Case")]
@@ -35,15 +35,6 @@ impl From<&(String, String)> for CyreneAppVersionsRow {
         CyreneAppVersionsRow {
             name: value.0.clone(),
             version: value.1.to_string(),
-        }
-    }
-}
-
-impl From<&CyreneAppItem> for CyreneAppVersionsRow {
-    fn from(value: &CyreneAppItem) -> Self {
-        CyreneAppVersionsRow {
-            name: value.name.clone(),
-            version: value.version.clone(),
         }
     }
 }

@@ -7,11 +7,10 @@ use std::{
 use log::debug;
 use serde::{Deserialize, Serialize};
 
-use crate::{errors::CyreneError, responses::CyreneAppItem};
+use crate::errors::CyreneError;
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct CyreneLockfile {
-    pub upgrade_latest: BTreeMap<String, bool>,
     pub versions: BTreeMap<String, String>,
     pub loaded_lockfile: Option<String>,
 }
@@ -29,18 +28,23 @@ impl CyreneLockfileManager {
         &self,
         name: &str,
     ) -> Result<Option<String>, CyreneError> {
-        let mut lockfile = if !fs::exists(&self.lockfile_path)? {
+        let mut lockfile = if !fs::exists(&self.lockfile_path).map_err(CyreneError::LockfileRead)? {
             CyreneLockfile::default()
         } else {
-            let lockfile_read = fs::read_to_string(&self.lockfile_path)?;
-            let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
+            let lockfile_read =
+                fs::read_to_string(&self.lockfile_path).map_err(CyreneError::LockfileRead)?;
+            let lockfile: CyreneLockfile =
+                toml::de::from_str(&lockfile_read).map_err(CyreneError::LockfileDeserialize)?;
             lockfile
         };
         if let Some(loaded_lockfile) = lockfile.loaded_lockfile {
             // Merge global lockfile with local ones
             let new_lockfile = {
-                let lockfile_read = fs::read_to_string(&loaded_lockfile)?;
-                let new_lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
+                let lockfile_read = fs::read_to_string(&loaded_lockfile).map_err(|e| {
+                    CyreneError::LockfileLocalRead(PathBuf::from(loaded_lockfile), e)
+                })?;
+                let new_lockfile: CyreneLockfile =
+                    toml::de::from_str(&lockfile_read).map_err(CyreneError::LockfileDeserialize)?;
 
                 new_lockfile
             };
@@ -53,49 +57,26 @@ impl CyreneLockfileManager {
         Ok(version)
     }
 
-    pub fn find_upgrade_latest_from_lockfile(&self, name: &str) -> Result<bool, CyreneError> {
-        let mut lockfile = if !fs::exists(&self.lockfile_path)? {
-            CyreneLockfile::default()
-        } else {
-            let lockfile_read = fs::read_to_string(&self.lockfile_path)?;
-            let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
-            lockfile
-        };
-        if let Some(loaded_lockfile) = lockfile.loaded_lockfile {
-            // Merge global lockfile with local ones
-            let new_lockfile = {
-                let lockfile_read = fs::read_to_string(&loaded_lockfile)?;
-                let new_lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
-
-                new_lockfile
-            };
-            for (key, value) in new_lockfile.versions {
-                lockfile.versions.insert(key, value);
-            }
-        }
-        let upgrade_latest = lockfile.upgrade_latest.get(name).unwrap_or(&false);
-        debug!(
-            "lockfile found app {} upgrade latest {:?}",
-            &name, &upgrade_latest
-        );
-        Ok(*upgrade_latest)
-    }
-
     pub fn update_lockfile(&self, name: &str, version: Option<&str>) -> Result<(), CyreneError> {
         let mut lockfile_path = PathBuf::from(&self.lockfile_path);
-        let mut lockfile = if !fs::exists(&lockfile_path)? {
+        let mut lockfile = if !fs::exists(&lockfile_path).map_err(CyreneError::LockfileRead)? {
             CyreneLockfile::default()
         } else {
-            let lockfile_read = fs::read_to_string(&lockfile_path)?;
-            let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
+            let lockfile_read =
+                fs::read_to_string(&lockfile_path).map_err(CyreneError::LockfileRead)?;
+            let lockfile: CyreneLockfile =
+                toml::de::from_str(&lockfile_read).map_err(CyreneError::LockfileDeserialize)?;
             lockfile
         };
         if let Some(loaded_lockfile) = lockfile.loaded_lockfile {
             // Save changes to new lockfile
             lockfile = {
                 lockfile_path = PathBuf::from(&loaded_lockfile);
-                let lockfile_read = fs::read_to_string(&loaded_lockfile)?;
-                let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
+                let lockfile_read = fs::read_to_string(&loaded_lockfile).map_err(|e| {
+                    CyreneError::LockfileLocalRead(PathBuf::from(&loaded_lockfile), e)
+                })?;
+                let lockfile: CyreneLockfile =
+                    toml::de::from_str(&lockfile_read).map_err(CyreneError::LockfileDeserialize)?;
                 lockfile
             }
         }
@@ -107,96 +88,71 @@ impl CyreneLockfileManager {
         } else {
             lockfile.versions.remove(name);
         }
-        let lockfile_write = toml::ser::to_string(&lockfile)?;
-        fs::write(lockfile_path, lockfile_write)?;
+        let lockfile_write =
+            toml::ser::to_string(&lockfile).map_err(CyreneError::LockfileSerialize)?;
+        fs::write(lockfile_path, lockfile_write).map_err(CyreneError::LockfileWrite)?;
         Ok(())
     }
 
     pub fn use_default_lockfile(&self) -> Result<(), CyreneError> {
-        let mut lockfile = if !fs::exists(&self.lockfile_path)? {
+        let mut lockfile = if !fs::exists(&self.lockfile_path).map_err(CyreneError::LockfileRead)? {
             CyreneLockfile::default()
         } else {
-            let lockfile_read = fs::read_to_string(&self.lockfile_path)?;
-            let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
+            let lockfile_read =
+                fs::read_to_string(&self.lockfile_path).map_err(CyreneError::LockfileRead)?;
+            let lockfile: CyreneLockfile =
+                toml::de::from_str(&lockfile_read).map_err(CyreneError::LockfileDeserialize)?;
             lockfile
         };
         lockfile.loaded_lockfile = None;
-        let lockfile_write = toml::ser::to_string(&lockfile)?;
-        fs::write(&self.lockfile_path, lockfile_write)?;
+        let lockfile_write =
+            toml::ser::to_string(&lockfile).map_err(CyreneError::LockfileSerialize)?;
+        fs::write(&self.lockfile_path, lockfile_write).map_err(CyreneError::LockfileWrite)?;
         Ok(())
     }
 
     pub fn use_local_lockfile(&self, loaded_lockfile: &Path) -> Result<(), CyreneError> {
-        let mut lockfile = if !fs::exists(&self.lockfile_path)? {
+        let mut lockfile = if !fs::exists(&self.lockfile_path).map_err(CyreneError::LockfileRead)? {
             CyreneLockfile::default()
         } else {
-            let lockfile_read = fs::read_to_string(&self.lockfile_path)?;
-            let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
+            let lockfile_read =
+                fs::read_to_string(&self.lockfile_path).map_err(CyreneError::LockfileRead)?;
+            let lockfile: CyreneLockfile =
+                toml::de::from_str(&lockfile_read).map_err(CyreneError::LockfileDeserialize)?;
             lockfile
         };
         lockfile.loaded_lockfile = Some(
-            fs::canonicalize(loaded_lockfile)?
+            fs::canonicalize(loaded_lockfile)
+                .map_err(|e| CyreneError::LockfileLocalRead(loaded_lockfile.to_path_buf(), e))?
                 .to_string_lossy()
                 .to_string(),
         );
-        let lockfile_write = toml::ser::to_string(&lockfile)?;
-        fs::write(&self.lockfile_path, lockfile_write)?;
+        let lockfile_write =
+            toml::ser::to_string(&lockfile).map_err(CyreneError::LockfileSerialize)?;
+        fs::write(&self.lockfile_path, lockfile_write).map_err(CyreneError::LockfileWrite)?;
         Ok(())
-    }
-
-    pub fn is_local_lockfile(&self) -> Result<bool, CyreneError> {
-        let lockfile = if !fs::exists(&self.lockfile_path)? {
-            CyreneLockfile::default()
-        } else {
-            let lockfile_read = fs::read_to_string(&self.lockfile_path)?;
-            let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
-            lockfile
-        };
-        Ok(lockfile.loaded_lockfile.is_some())
-    }
-
-    pub fn load_versions_from_current_lockfile(&self) -> Result<Vec<CyreneAppItem>, CyreneError> {
-        let mut lockfile = if !fs::exists(&self.lockfile_path)? {
-            CyreneLockfile::default()
-        } else {
-            let lockfile_read = fs::read_to_string(&self.lockfile_path)?;
-            let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
-            lockfile
-        };
-        if let Some(loaded_lockfile) = lockfile.loaded_lockfile {
-            // Load needed versions from new lockfile
-            lockfile = {
-                let lockfile_read = fs::read_to_string(&loaded_lockfile)?;
-                let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
-                lockfile
-            };
-        }
-        let version: Vec<_> = lockfile
-            .versions
-            .into_iter()
-            .map(|(key, value)| CyreneAppItem {
-                name: key,
-                version: value,
-            })
-            .collect();
-        Ok(version)
     }
 
     pub fn load_version_map_from_current_lockfile(
         &self,
     ) -> Result<BTreeMap<String, String>, CyreneError> {
-        let mut lockfile = if !fs::exists(&self.lockfile_path)? {
+        let mut lockfile = if !fs::exists(&self.lockfile_path).map_err(CyreneError::LockfileRead)? {
             CyreneLockfile::default()
         } else {
-            let lockfile_read = fs::read_to_string(&self.lockfile_path)?;
-            let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
+            let lockfile_read =
+                fs::read_to_string(&self.lockfile_path).map_err(CyreneError::LockfileRead)?;
+            let lockfile: CyreneLockfile =
+                toml::de::from_str(&lockfile_read).map_err(CyreneError::LockfileDeserialize)?;
             lockfile
         };
         if let Some(loaded_lockfile) = lockfile.loaded_lockfile {
             // Load needed versions from new lockfile
             lockfile = {
-                let lockfile_read = fs::read_to_string(&loaded_lockfile)?;
-                let lockfile: CyreneLockfile = toml::de::from_str(&lockfile_read)?;
+                let lockfile_read = fs::read_to_string(&loaded_lockfile).map_err(|e| {
+                    CyreneError::LockfileLocalRead(PathBuf::from(loaded_lockfile), e)
+                })?;
+                let lockfile: CyreneLockfile =
+                    toml::de::from_str(&lockfile_read).map_err(CyreneError::LockfileDeserialize)?;
                 lockfile
             };
         }

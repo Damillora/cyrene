@@ -1,8 +1,15 @@
+use jsonpath_rust::JsonPath;
 use log::debug;
-use reqwest::header;
-use rune::{ContextError, Module, Value};
-use serde::Deserialize;
 use regex::Regex;
+use reqwest::header;
+use serde::Deserialize;
+use serde_json::Value;
+use url::Url;
+
+use crate::{
+    app::{AppVersions, AppVersionsUrlCommand},
+    errors::CyreneError,
+};
 
 #[derive(Deserialize)]
 struct GitHubVersion {
@@ -10,8 +17,22 @@ struct GitHubVersion {
     prerelease: bool,
 }
 
-#[rune::function]
-fn from_github(repo: &str) -> Vec<String> {
+fn sanitize_version(ver: &str, ver_regex: &Regex) -> String {
+    let mut version = ver.to_string();
+    if let Some(captures) = ver_regex.captures(&version)
+        && let Some(ver_name) = captures.get(2)
+    {
+        version = String::from(ver_name.as_str())
+    } else if version.starts_with("v") {
+        version = version.trim_start_matches("v").to_string();
+    }
+
+    version
+}
+
+async fn process_github(repo: &str) -> Result<Vec<String>, CyreneError> {
+    let ver_regex = Regex::new(r"(.*)-v?([0-9\.]*)").unwrap();
+
     let mut headers = header::HeaderMap::new();
     headers.insert("Accept", "application/vnd.github+json".parse().unwrap());
     headers.insert("X-GitHub-Api-Version", "2022-11-28".parse().unwrap());
@@ -21,35 +42,36 @@ fn from_github(repo: &str) -> Vec<String> {
     let mut still_more_stuff = true;
     let mut page = 1;
 
-    let ver_regex = Regex::new(r"(.*)-v?([0-9\.]*)").unwrap();
-
     while still_more_stuff && page <= 10 {
-        let client = reqwest::blocking::Client::new();
+        let client = reqwest::Client::new();
         debug!(
             "Calling https://api.github.com/repos/{}/releases?per_page=100&page={}",
             repo, page
         );
+        let url = format!(
+            "https://api.github.com/repos/{}/releases?per_page=100&page={}",
+            repo, page
+        );
         let res = client
-            .get(format!(
-                "https://api.github.com/repos/{}/releases?per_page=100&page={}",
-                repo, page
-            ))
+            .get(&url)
             .headers(headers.clone())
             .send()
-            .unwrap();
-        let res = res.error_for_status().unwrap();
-        let a: Vec<GitHubVersion> = res.json().unwrap();
+            .await
+            .map_err(|e| CyreneError::VersionFetch(url.clone(), e))?;
+        let res = res
+            .error_for_status()
+            .map_err(|e| CyreneError::VersionFetch(url.clone(), e))?;
+        let a: Vec<GitHubVersion> = res
+            .json()
+            .await
+            .map_err(|e| CyreneError::VersionFetch(url.clone(), e))?;
         let mut a: Vec<String> = a
             .iter()
-            .filter(|f| f.prerelease == false)
+            .filter(|f| !f.prerelease)
             .map(|f| {
                 debug!("found version: {}", f.tag_name);
                 let mut tag_name = f.tag_name.to_string();
-                if let Some(captures) = ver_regex.captures(&tag_name)
-                    && let Some(ver_name) = captures.get(2)
-                {
-                    tag_name = String::from(ver_name.as_str())
-                }
+                tag_name = sanitize_version(&tag_name, &ver_regex);
                 tag_name
             })
             .collect();
@@ -60,25 +82,110 @@ fn from_github(repo: &str) -> Vec<String> {
         page += 1;
     }
 
-    versions
+    Ok(versions)
 }
 
-#[rune::function]
-fn from_json(url: &str) -> Value {
+async fn process_url(
+    url: &Url,
+    command: &Vec<AppVersionsUrlCommand>,
+) -> Result<Vec<String>, CyreneError> {
+    let ver_regex = Regex::new(r"(.*)-v?([0-9\.]*)").unwrap();
+
     let mut headers = header::HeaderMap::new();
     headers.insert("User-Agent", "damillora-cyrene".parse().unwrap());
     debug!("Getting release info from {}", url);
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::Client::new();
     debug!("Calling {}", url);
-    let res = client.get(url).headers(headers.clone()).send().unwrap();
-    let result: Value = res.json().unwrap();
-
-    result
+    let res = client
+        .get(url.to_string())
+        .headers(headers.clone())
+        .send()
+        .await
+        .map_err(|e| CyreneError::VersionFetch(url.to_string(), e))?;
+    let result: Value = res
+        .json()
+        .await
+        .map_err(|e| CyreneError::VersionFetch(url.to_string(), e))?;
+    let mut results: Vec<String> = Vec::new();
+    for command in command {
+        match command {
+            AppVersionsUrlCommand::Jsonpath { query } => {
+                let processed_value: Vec<&Value> = result
+                    .query(query)
+                    .map_err(|e| CyreneError::VersionQueryParse(query.clone(), e))?;
+                let processed_value: Vec<String> = processed_value
+                    .iter()
+                    .filter_map(|f| f.as_str())
+                    .map(|f| f.to_string())
+                    .collect();
+                results = processed_value;
+            }
+            AppVersionsUrlCommand::StripPrefix { prefix } => {
+                results = results
+                    .iter()
+                    .map(|e| e.strip_prefix(prefix).unwrap_or("").to_string())
+                    .collect();
+            }
+        }
+    }
+    results = results
+        .iter()
+        .map(|f| {
+            debug!("found version: {}", f);
+            let mut version = f.to_string();
+            version = sanitize_version(&version, &ver_regex);
+            version
+        })
+        .collect();
+    Ok(results)
 }
 
-pub fn module() -> Result<Module, ContextError> {
-    let mut m = Module::with_crate("versions")?;
-    m.function_meta(from_github)?;
-    m.function_meta(from_json)?;
-    Ok(m)
+pub async fn process_version(versions: &AppVersions) -> Result<Vec<String>, CyreneError> {
+    match versions {
+        AppVersions::Github { repo } => process_github(repo).await,
+        AppVersions::Url { url, command } => process_url(url, command).await,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_github() {
+        let version = AppVersions::Github {
+            repo: "Damillora/cyrene".to_string(),
+        };
+        let result = process_version(&version).await;
+
+        if let Ok(result) = result {
+            assert!(result.len() > 0);
+            println!("{:?}", result);
+            assert!(result.iter().any(|f| f.eq("0.3.0")));
+        } else {
+            panic!("Not ok");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_custom() {
+        let version = AppVersions::Url {
+            url: Url::from_str("https://nodejs.org/dist/index.json").unwrap(),
+            command: vec![AppVersionsUrlCommand::Jsonpath {
+                query: "$[*].version".to_string(),
+            }],
+        };
+
+        let result = process_version(&version).await;
+
+        if let Ok(result) = result {
+            assert!(result.len() > 0);
+            println!("{:?}", result);
+            assert!(result.iter().any(|f| f.eq("22.0.0")));
+        } else {
+            panic!("Not ok");
+        }
+    }
 }

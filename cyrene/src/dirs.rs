@@ -16,15 +16,20 @@ pub struct CyreneDirs {
 impl CyreneDirs {
     pub fn init_dirs(&self) -> Result<(), CyreneError> {
         debug!("Creating {}", &self.apps_dir.display());
-        fs::create_dir_all(&self.apps_dir)?;
+        fs::create_dir_all(&self.apps_dir)
+            .map_err(|e| CyreneError::DirectoryInit(self.apps_dir.clone(), e))?;
         debug!("Creating {}", &self.plugins_dir.display());
-        fs::create_dir_all(&self.plugins_dir)?;
+        fs::create_dir_all(&self.plugins_dir)
+            .map_err(|e| CyreneError::DirectoryInit(self.plugins_dir.clone(), e))?;
         debug!("Creating {}", &self.config_dir.display());
-        fs::create_dir_all(&self.config_dir)?;
+        fs::create_dir_all(&self.config_dir)
+            .map_err(|e| CyreneError::DirectoryInit(self.apps_dir.clone(), e))?;
         debug!("Creating {}", &self.cache_dir.display());
-        fs::create_dir_all(&self.cache_dir)?;
+        fs::create_dir_all(&self.cache_dir)
+            .map_err(|e| CyreneError::DirectoryInit(self.apps_dir.clone(), e))?;
         debug!("Creating {}", &self.exe_dir.display());
-        fs::create_dir_all(&self.exe_dir)?;
+        fs::create_dir_all(&self.exe_dir)
+            .map_err(|e| CyreneError::DirectoryInit(self.apps_dir.clone(), e))?;
 
         Ok(())
     }
@@ -45,6 +50,20 @@ impl CyreneDirs {
         lockfile_path.push("cyrene.toml");
 
         lockfile_path
+    }
+
+    pub fn ensure_installation_dir(
+        &self,
+        name: &str,
+        version: &str,
+    ) -> Result<PathBuf, CyreneError> {
+        // $CYRENE_APPS_DIR/app_name-app_version
+        let installation_path = self.installation_path(name, version.to_string().as_str());
+        fs::create_dir_all(&installation_path).map_err(|e| {
+            CyreneError::AppInstallDirCreateError(name.to_string(), version.to_string(), e)
+        })?;
+
+        Ok(installation_path)
     }
 }
 impl Default for CyreneDirs {

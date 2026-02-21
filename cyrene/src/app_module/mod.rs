@@ -1,10 +1,6 @@
-/// Env module
-pub mod env;
-/// Modify module
-pub mod modify;
-/// Sources module
+/// Post-install processor
+pub mod post_install;
+/// Sources processor
 pub mod sources;
-/// Strings module;
-pub mod strings;
-/// Versions module
+/// Version processor
 pub mod versions;

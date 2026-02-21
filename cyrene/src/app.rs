@@ -1,127 +1,184 @@
-use std::{path::Path, sync::Arc};
+use std::{collections::HashMap, fs, path::Path};
 
-use log::debug;
-use rune::{
-    Context, Diagnostics, Source, Sources, Vm,
-    termcolor::{ColorChoice, StandardStream},
-};
-use semver::Version;
+use serde::{Deserialize, Serialize};
+use text_template::Template;
+use url::Url;
 
 use crate::{
-    app_module::{
-        env::{self, CyreneEnv},
-        modify, sources, strings, versions,
-    },
+    app_module::{post_install::process_post_install, sources::process_source, versions},
     errors::CyreneError,
 };
 
+#[derive(Serialize, Deserialize)]
 pub struct CyreneApp {
-    script_vm: Vm,
-    plugin_name: String,
+    pub settings: AppSettings,
+    pub versions: AppVersions,
+    pub sources: Vec<AppSources>,
+    pub binaries: HashMap<String, String>,
+    pub post_install: Option<Vec<AppPostInstallCommands>>,
+}
+#[derive(Serialize, Deserialize)]
+pub struct AppSettings {
+    pub upgrade_latest: bool,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum AppVersions {
+    Github {
+        repo: String,
+    },
+    Url {
+        url: Url,
+        command: Vec<AppVersionsUrlCommand>,
+    },
+}
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AppVersionsUrlCommand {
+    Jsonpath { query: String },
+    StripPrefix { prefix: String },
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AppSources {
+    TarXz { url: String },
+    TarGz { url: String },
+    Zip { url: String },
+    File { url: String },
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AppPostInstallCommands {
+    SetExec { path: String },
+}
+
+// Instance functions
 impl CyreneApp {
-    pub fn new(path: &Path) -> Result<Box<Self>, CyreneError> {
-        let app_name = path
-            .file_stem()
-            .ok_or(CyreneError::PluginPathError)?
-            .to_string_lossy();
+    pub async fn get_versions(&self) -> Result<Vec<String>, CyreneError> {
+        versions::process_version(&self.versions).await
+    }
 
-        let mut context = Context::with_default_modules()?;
-        context.install(versions::module()?)?;
-        context.install(sources::module()?)?;
-        context.install(env::module()?)?;
-        context.install(modify::module()?)?;
-        context.install(strings::module()?)?;
-        context.install(rune_modules::http::module(true)?)?;
-        context.install(rune_modules::json::module(true)?)?;
-
-        let runtime = Arc::new(context.runtime()?);
-        let mut sources = Sources::new();
-        sources.insert(Source::from_path(path)?)?;
-
-        let mut diagnostics = Diagnostics::new();
-
-        let result = rune::prepare(&mut sources)
-            .with_context(&context)
-            .with_diagnostics(&mut diagnostics)
-            .build();
-
-        if !diagnostics.is_empty() {
-            let mut writer = StandardStream::stderr(ColorChoice::Always);
-            diagnostics.emit(&mut writer, &sources)?;
+    pub async fn install(&self, version: &str, installation_dir: &Path) -> Result<(), CyreneError> {
+        for source in &self.sources {
+            process_source(source, version, installation_dir).await?;
         }
-
-        let unit = result?;
-        let unit = Arc::new(unit);
-        let vm = Vm::new(runtime, unit);
-
-        Ok(Box::new(Self {
-            plugin_name: String::from(app_name),
-            script_vm: vm,
-        }))
-    }
-
-    pub fn plugin_name(&self) -> String {
-        self.plugin_name.clone()
-    }
-
-    pub fn get_versions(&mut self) -> Result<Vec<String>, CyreneError> {
-        let output = self.script_vm.call(["get_versions"], ())?;
-        let output: Vec<String> = rune::from_value(output)?;
-        let mut output: Vec<_> = output
-            .iter()
-            .map(|a| a.trim_start_matches("v"))
-            .filter_map(|a| Version::parse(a).ok())
-            .collect();
-        output.sort_by(|a, b| b.cmp(a));
-        let output: Vec<String> = output.iter().map(|a| a.to_string()).collect();
-
-        Ok(output)
-    }
-
-    pub fn install_version(
-        &mut self,
-        installation_dir: &Path,
-        version: &str,
-    ) -> Result<(), CyreneError> {
-        std::env::set_current_dir(installation_dir)?;
-        debug!(
-            "Installing app version {} from plugin {} to {}",
-            version,
-            self.plugin_name,
-            installation_dir.to_string_lossy()
-        );
-        self.script_vm.call(
-            ["install_app"],
-            (CyreneEnv {
-                version: version.into(),
-            },),
-        )?;
-        std::env::set_current_dir(installation_dir)?;
-        self.script_vm.call(
-            ["post_install"],
-            (CyreneEnv {
-                version: version.into(),
-            },),
-        )?;
 
         Ok(())
     }
 
-    pub fn binaries(&mut self, version: &str) -> Result<Vec<(String, String)>, CyreneError> {
-        debug!(
-            "Listing binaries for app version {} from plugin {}",
-            version, self.plugin_name
-        );
-        let result = self.script_vm.call(
-            ["binaries"],
-            (CyreneEnv {
-                version: version.to_string(),
-            },),
-        )?;
-        let output: Vec<(String, String)> = rune::from_value(result)?;
+    pub async fn post_install(
+        &self,
+        version: &str,
+        installation_dir: &Path,
+    ) -> Result<(), CyreneError> {
+        let mut values = HashMap::new();
+        values.insert("version", version);
+        if let Some(post_install) = &self.post_install {
+            for post_install in post_install {
+                process_post_install(post_install, version, installation_dir).await?;
+            }
+        }
 
-        Ok(output)
+        Ok(())
+    }
+
+    pub fn binaries(&self, version: &str) -> Result<HashMap<String, String>, CyreneError> {
+        let mut values = HashMap::new();
+        values.insert("version", version);
+        let new_map = self
+            .binaries
+            .clone()
+            .into_iter()
+            .map(|(key, value)| {
+                let tmpl = Template::from(value.as_str());
+                let new_val = tmpl.fill_in(&values);
+                (key, new_val.to_string())
+            })
+            .collect();
+        Ok(new_map)
+    }
+
+    pub fn upgrade_latest(&self) -> bool {
+        todo!()
+    }
+}
+
+impl CyreneApp {
+    pub fn from_str(config: &str) -> Result<CyreneApp, CyreneError> {
+        let app: CyreneApp = toml::de::from_str(config).map_err(CyreneError::AppDeserialize)?;
+
+        Ok(app)
+    }
+    pub fn from_file(path: &Path) -> Result<CyreneApp, CyreneError> {
+        let file =
+            fs::read_to_string(path).map_err(|e| CyreneError::AppRead(path.to_path_buf(), e))?;
+
+        CyreneApp::from_str(&file)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn github_app() {
+        let config = r#"
+[settings]
+upgrade_latest = false
+
+[versions]
+type = "github"
+repo = "Damillora/cyrene"
+
+[[sources]]
+type = "tar_xz"
+url = "https://github.com/Damillora/cyrene/releases/download/${env.version}/cyrene-x86_64-unknown-linux-gnu.tar.xz"
+
+[binaries]
+cyrene = "cyrene-x86_64-unknown-linux-gnu/cyrene"
+"#;
+        let app: CyreneApp = toml::de::from_str(&config).unwrap();
+        if let AppVersions::Github { repo } = app.versions {
+            assert_eq!(repo, "Damillora/cyrene");
+        } else {
+            panic!("Not GitHub source");
+        }
+        assert_eq!(app.sources.len(), 1);
+        assert_eq!(app.binaries.len(), 1);
+    }
+
+    #[test]
+    fn custom_app() {
+        let config = r#"
+[settings]
+upgrade_latest = false
+
+[versions]
+type = "url"
+url = "https://nodejs.org/dist/index.json"
+
+[versions.command]
+type = "jsonpath"
+query = "$[*].version"
+
+[[sources]]
+type = "tar_xz"
+url = "https://nodejs.org/dist/v${version}/node-v${version}-linux-x64.tar.xz"
+
+[binaries]
+node = "node-v${version}-linux-x64/bin/node"
+"#;
+        let app: CyreneApp = toml::de::from_str(&config).unwrap();
+
+        if let AppVersions::Url { url, command } = app.versions {
+            assert_eq!(url.as_str(), "https://nodejs.org/dist/index.json");
+        } else {
+            panic!("Not URL source");
+        }
+        assert_eq!(app.sources.len(), 1);
+        assert_eq!(app.binaries.len(), 1);
     }
 }

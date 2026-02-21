@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- BREAKING CHANGE: Switch recipes from Rune scripts to plain TOML files
 - Install binaries from ZIP files.
 
 ### Changed

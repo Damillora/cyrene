@@ -4,10 +4,10 @@ Conjure upon ripples of past reverie to run multiple versions of runtimes and to
 
 ## Features
 
-* Install and upgrade multiple versions of tools
-* Symlink-based version management
-* Extensible with scripts written in [Rune](https://rune-rs.github.io/)
-* Synchronize tool versions with `cyrene.toml` lockfiles
+- Install and upgrade multiple versions of tools
+- Symlink-based version management
+- TOML-based recipes
+- Synchronize tool versions with `cyrene.toml` lockfiles
 
 ## Installation
 
@@ -40,6 +40,7 @@ To manage `cyrene` with `cyrene` itself, first install `cyrene` version `0.2.3` 
 After that, run `cyrene env` to generate required environment variables to `$HOME/.config/cyrene/cyrene_env.sh`, then `source` this file. **Loading this environment file is mandatory to manage cyrene with cyrene**. cyrene version `0.2.3` has a check that prevents `cyrene` from sacrificing itself if the environment is not properly loaded.
 
 Then simply:
+
 ```sh
 cyrene install cyrene
 ```
@@ -82,15 +83,14 @@ node
 cyrene load -d
 ```
 
-
 ## Configuration
 
 Cyrene is currently configured with environment variables:
 Run `cyrene env` to generate a script exporting its default configuration to `$HOME/.config/cyrene/cyrene.sh`.
 
-* `CYRENE_APPS_DIR`: Location of installed binaries. Defaults to `$HOME/.local/share/cyrene/apps`.
-* `CYRENE_PLUGINS_DIR`: Location of installed plugins. Defaults to `$HOME/.local/share/cyrene/apps`.
-* `CYRENE_INSTALL_DIR`: Location of the `cyrene` binary itself. Default to the location of the `cyrene` executable itself.
+- `CYRENE_APPS_DIR`: Location of installed binaries. Defaults to `$HOME/.local/share/cyrene/apps`.
+- `CYRENE_PLUGINS_DIR`: Location of installed plugins. Defaults to `$HOME/.local/share/cyrene/apps`.
+- `CYRENE_INSTALL_DIR`: Location of the `cyrene` binary itself. Default to the location of the `cyrene` executable itself.
 
 The default lockfile is located at `$HOME/.config/cyrene/cyrene.toml`. Per-project lockfiles are configured using the current directory's `cyrene.toml` file.
 

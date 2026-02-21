@@ -1,65 +1,76 @@
-use rune::{
-    BuildError, ContextError,
-    diagnostics::EmitError,
-    runtime::{RuntimeError, VmError},
-    source::FromPathError,
-};
-use thiserror::Error;
+use std::path::PathBuf;
 
 use miette::Diagnostic;
+use thiserror::Error;
 
 #[derive(Error, Diagnostic, Debug)]
 pub enum CyreneError {
-    #[error("IO error: {0}")]
-    FsError(#[from] std::io::Error),
-    #[error("Cannot create context: {0}")]
-    RuneContextError(#[from] ContextError),
-    #[error("Cannot fetch source: {0}")]
-    RuneSourceError(#[from] FromPathError),
-    #[error("Cannot display error messages: {0}")]
-    RuneEmitError(#[from] EmitError),
-    #[error("Cannot parse scripts: {0}")]
-    RuneBuildError(#[from] BuildError),
-    #[error("Error while running script: {0}")]
-    RuneRuntimeError(#[from] RuntimeError),
-    #[error("Error while running script: {0}")]
-    RuneVmError(#[from] VmError),
-    #[error("Cannot allocate runtime: {0}")]
-    RuneAllocError(#[from] rune::alloc::Error),
-    #[error("Cannot find cyrene configuration")]
-    NoHomeError,
-    #[error("App for plugin {0} is not installed")]
-    AppNotInstalledError(String),
-    #[error("App for plugin {0} is not registered in lockfile")]
-    AppNotInLockfileError(String),
-    #[error("App version {0} for plugin {1} is not installed")]
-    AppVersionNotInstalledError(String, String),
-    #[error("Cannot find app version {0} for plugin {1} in version list")]
-    AppVersionNotFoundError(String, String),
-    #[error("Cannot find app version {0} for plugin {1} in versions cache")]
-    AppVersionNotFoundInCacheError(String, String),
-    #[error("Cannot find app versions for plugin {0} in versions cache")]
-    AppVersionNotInCacheError(String),
-    #[error("Error parsing versions: {0}")]
-    VersionError(#[from] semver::Error),
-    #[error("Cannot locate cyrene")]
-    ExePathError,
-    #[error("Cannot locate plugin")]
-    PluginPathError,
-    #[error("Cannot query the web: {0}")]
-    HttpError(#[from] reqwest::Error),
-    #[error("Lockfile is malformed: {0}")]
-    LockfileReadError(#[from] toml::de::Error),
-    #[error("Cannot find lockfile")]
-    LockfileNotFoundError,
-    #[error("App version {0} for plugin {1} in lockfile is invalid")]
-    LockfileAppVersionError(String, String),
-    #[error("Plugin {0} in lockfile is invalid")]
-    LockfileAppError(String),
-    #[error("Cannot write lockfile: {0}")]
-    LockfileWriteError(#[from] toml::ser::Error),
-    #[error("Console is interrupted: {0}")]
-    ConsoleInterruptedError(#[from] dialoguer::Error),
-    #[error("Cyrene was about to sacrifice itself to the Remembrance")]
-    AppLinkingToItselfError,
+    #[error("Unable to read from version cache: {0}")]
+    VersionCacheRead(std::io::Error),
+    #[error("Unable to write from version cache: {0}")]
+    VersionCacheWrite(std::io::Error),
+    #[error("Unable to deserialize version cache: {0}")]
+    VersionCacheDeserialize(toml::de::Error),
+    #[error("Unable to serialize version cache: {0}")]
+    VersionCacheSerialize(toml::ser::Error),
+    #[error("Unable to read lockfile: {0}")]
+    LockfileRead(std::io::Error),
+    #[error("Unable to write lockfile: {0}")]
+    LockfileWrite(std::io::Error),
+    #[error("Unable to deserialize lockfile: {0}")]
+    LockfileDeserialize(toml::de::Error),
+    #[error("Unable to serialize lockfile: {0}")]
+    LockfileSerialize(toml::ser::Error),
+    #[error("Unable to load lockfile from {0}: {1}")]
+    LockfileLocalRead(PathBuf, std::io::Error),
+    #[error("Unable to initialize directory {0}: {1}")]
+    DirectoryInit(PathBuf, std::io::Error),
+    #[error("Unable to parse app: {0}")]
+    AppDeserialize(toml::de::Error),
+    #[error("Unable to read app from {0}: {1}")]
+    AppRead(PathBuf, std::io::Error),
+    #[error("Unable to parse version string {0}: {1}")]
+    VersionParse(String, semver::Error),
+    #[error("Unable to fetch version info from {0}: {1}")]
+    VersionFetch(String, reqwest::Error),
+    #[error("Unable to execute JSON query {0}: {1}")]
+    VersionQueryParse(String, jsonpath_rust::parser::errors::JsonPathError),
+    #[error("Unable to list apps in {0}: {1}")]
+    AppList(PathBuf, std::io::Error),
+    #[error("Unable to find app {0} version {1}")]
+    AppVersionNotFound(String, String),
+    #[error("Interaction error: {0}")]
+    Interaction(dialoguer::Error),
+    #[error("Unable to confirm the installation of {0} version {1}: {2}")]
+    AppCheck(String, String, std::io::Error),
+    #[error("Unable to find installation of {0} version {1}")]
+    AppNotInstalled(String, String),
+    #[error("Versions for {0} not cached")]
+    AppVersionNotCached(String),
+    #[error("Unable to create installation directory for {0} version {1}: {2}")]
+    AppInstallDirCreateError(String, String, std::io::Error),
+    #[error("Unable to download from {0}: {1}")]
+    Download(String, reqwest::Error),
+    #[error("Unable to save download from {0}: {1}")]
+    DownloadWrite(String, std::io::Error),
+    #[error("Somehow unable to access the current executable")]
+    ExeCheck(std::io::Error),
+    #[error("Cyrene was about to close the causality loop")]
+    AppLinkingToSelf,
+    #[error("Unable to read link in {0}: {1}")]
+    AppLinkRead(String, std::io::Error),
+    #[error("Unable to remove link in {0}: {1}")]
+    AppLinkRemove(String, std::io::Error),
+    #[error("Unable to link {0} to {1}: {1}")]
+    AppLinkCreate(String, String, std::io::Error),
+    #[error("Cannot find lockfile at {0}")]
+    LockfileNotFoundError(PathBuf),
+    #[error("Unable to remove {0} version {1}: {2}")]
+    AppRemove(String, String, std::io::Error),
+    #[error("Unable to initialize Cyrene environment")]
+    EnvCreate(std::io::Error),
+    #[error("Unable to write Cyrene environment")]
+    EnvWrite(std::io::Error),
+    #[error("Non existent app {0} version {1} in lockfile")]
+    LockfileAppVersion(String, String),
 }

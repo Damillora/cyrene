@@ -1,156 +1,192 @@
 use std::{
-    fs::File,
-    io::{self, Read},
+    collections::HashMap,
+    io::{self},
+    path::Path,
 };
 
-use flate2::read::GzDecoder;
+use async_compression::futures::{bufread::GzipDecoder, bufread::XzDecoder};
+use async_tar::Archive;
+use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
-use rune::{ContextError, Module};
-use tar::Archive;
+use log::debug;
 use tempfile::tempfile;
-use xz::read::XzDecoder;
+use text_template::Template;
+use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 use zip::ZipArchive;
-struct UploadProgress<R> {
-    inner: R,
-    total: u64,
-    bytes_read: u64,
-    progress_bar: ProgressBar,
+
+use crate::{app::AppSources, errors::CyreneError};
+
+fn new_progress_bar(filename: &str, len: u64) -> ProgressBar {
+    ProgressBar::new(len)
+        .with_style(
+            ProgressStyle::with_template(
+                "{msg:.white.bold} {wide_bar:.219} {percent:>3.219.bold}% [{bytes:>10.white}/{total_bytes:.219.bold}]",
+            )
+            .unwrap(),
+        )
+        .with_message(filename.to_string())
 }
-impl<R: Read> UploadProgress<R> {
-    fn new(read: R, filename: &str, len: u64) -> Self {
-        Self {
-            inner: read,
-            bytes_read: 0,
-            total: len,
-            progress_bar: ProgressBar::new(len)
-                .with_style(
-                    ProgressStyle::with_template(
-                        "{msg:.white.bold} {wide_bar:.219} {percent:>3.219.bold}% [{bytes:>10.white}/{total_bytes:.219.bold}]",
-                    )
-                    .unwrap(),
-                )
-                .with_message(filename.to_string()),
+
+async fn from_tar_xz(url: &str, dest: &Path) -> Result<(), CyreneError> {
+    let target_filename = url
+        .trim_end_matches('/')
+        .split('/')
+        .next_back()
+        .unwrap()
+        .to_string();
+    let client = reqwest::Client::new();
+    let res = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| CyreneError::Download(url.to_string(), e))?;
+    let len = res.content_length().unwrap();
+
+    let reader = res
+        .bytes_stream()
+        .map_err(io::Error::other)
+        .into_async_read()
+        .compat();
+    let pb = new_progress_bar(&target_filename, len);
+    let reader = pb.wrap_async_read(reader);
+
+    let tar_xz = XzDecoder::new(reader.compat());
+    let tar = Archive::new(tar_xz);
+    tar.unpack(dest).await.unwrap();
+
+    Ok(())
+}
+
+async fn from_tar_gz(url: &str, dest: &Path) -> Result<(), CyreneError> {
+    let target_filename = url
+        .trim_end_matches('/')
+        .split('/')
+        .next_back()
+        .unwrap()
+        .to_string();
+    let client = reqwest::Client::new();
+    let res = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| CyreneError::Download(url.to_string(), e))?;
+    let len = res.content_length().unwrap();
+
+    let reader = res
+        .bytes_stream()
+        .map_err(io::Error::other)
+        .into_async_read()
+        .compat();
+    debug!("len: {}", len);
+    let pb = new_progress_bar(&target_filename, len);
+    let reader = pb.wrap_async_read(reader);
+
+    let tar_gz = GzipDecoder::new(reader.compat());
+    let tar = Archive::new(tar_gz);
+    tar.unpack(dest).await.unwrap();
+
+    Ok(())
+}
+
+async fn from_zip(url: &str, dest: &Path) -> Result<(), CyreneError> {
+    let target_filename = url
+        .trim_end_matches('/')
+        .split('/')
+        .next_back()
+        .unwrap()
+        .to_string();
+    let client = reqwest::Client::new();
+    let res = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| CyreneError::Download(url.to_string(), e))?;
+    let len = res.content_length().unwrap();
+
+    let reader = res
+        .bytes_stream()
+        .map_err(io::Error::other)
+        .into_async_read()
+        .compat();
+    let pb = new_progress_bar(&target_filename, len);
+    let mut reader = pb.wrap_async_read(reader);
+
+    let mut file = tokio::fs::File::from_std(tempfile().unwrap());
+
+    tokio::io::copy(&mut reader, &mut file)
+        .await
+        .map_err(|e| CyreneError::DownloadWrite(url.to_string(), e))?;
+
+    let mut zip_file = ZipArchive::new(file.into_std().await).unwrap();
+    zip_file.extract(dest).unwrap();
+
+    Ok(())
+}
+
+async fn from_file(url: &str, dest: &Path) -> Result<(), CyreneError> {
+    let target_filename = url
+        .trim_end_matches('/')
+        .split('/')
+        .next_back()
+        .unwrap()
+        .to_string();
+    let client = reqwest::Client::new();
+    let res = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| CyreneError::Download(url.to_string(), e))?;
+    let len = res.content_length().unwrap();
+
+    let reader = res
+        .bytes_stream()
+        .map_err(io::Error::other)
+        .into_async_read()
+        .compat();
+    let pb = new_progress_bar(&target_filename, len);
+    let mut reader = pb.wrap_async_read(reader);
+
+    let mut target_file = dest.to_path_buf();
+    target_file.push(&target_filename);
+
+    let mut file = tokio::fs::File::create(&target_file)
+        .await
+        .map_err(|e| CyreneError::DownloadWrite(target_file.to_string_lossy().to_string(), e))?;
+
+    tokio::io::copy(&mut reader, &mut file)
+        .await
+        .map_err(|e| CyreneError::DownloadWrite(url.to_string(), e))?;
+
+    Ok(())
+}
+
+pub async fn process_source(
+    source: &AppSources,
+    version: &str,
+    dest: &Path,
+) -> Result<(), CyreneError> {
+    let mut values = HashMap::new();
+    values.insert("version", version);
+    match source {
+        AppSources::TarXz { url } => {
+            let tmpl = Template::from(url.as_str());
+            let url = tmpl.fill_in(&values);
+            from_tar_xz(&url.to_string(), dest).await
+        }
+        AppSources::TarGz { url } => {
+            let tmpl = Template::from(url.as_str());
+            let url = tmpl.fill_in(&values);
+            from_tar_gz(&url.to_string(), dest).await
+        }
+        AppSources::Zip { url } => {
+            let tmpl = Template::from(url.as_str());
+            let url = tmpl.fill_in(&values);
+            from_zip(&url.to_string(), dest).await
+        }
+        AppSources::File { url } => {
+            let tmpl = Template::from(url.as_str());
+            let url = tmpl.fill_in(&values);
+            from_file(&url.to_string(), dest).await
         }
     }
-}
-impl<R: Read> Read for UploadProgress<R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.read(buf).inspect(|n| {
-            self.bytes_read += *n as u64;
-            self.progress_bar.inc(*n as u64);
-            if self.bytes_read == self.total {
-                self.progress_bar.finish();
-            }
-        })
-    }
-}
-
-#[rune::function]
-fn from_tar_xz(url: &str) {
-    let target_filename = url
-        .trim_end_matches('/')
-        .split('/')
-        .next_back()
-        .unwrap()
-        .to_string();
-    let client = reqwest::blocking::Client::new();
-    let res = client.get(url).send().unwrap();
-    let len = res.content_length();
-    let res: Box<dyn Read> = if let Some(len) = len {
-        Box::new(UploadProgress::new(res, &target_filename, len))
-    } else {
-        Box::new(res)
-    };
-    let tar_xz = XzDecoder::new(res);
-    let mut tar = Archive::new(tar_xz);
-    tar.unpack(".").unwrap();
-}
-#[rune::function]
-fn from_tar_gz(url: &str) {
-    let target_filename = url
-        .trim_end_matches('/')
-        .split('/')
-        .next_back()
-        .unwrap()
-        .to_string();
-    let client = reqwest::blocking::Client::new();
-    let res = client.get(url).send().unwrap();
-    let len = res.content_length();
-    let res: Box<dyn Read> = if let Some(len) = len {
-        Box::new(UploadProgress::new(res, &target_filename, len))
-    } else {
-        Box::new(res)
-    };
-    let tar_gz = GzDecoder::new(res);
-    let mut tar = Archive::new(tar_gz);
-    tar.unpack(".").unwrap();
-}
-#[rune::function]
-fn from_zip(url: &str) {
-    let target_filename = url
-        .trim_end_matches('/')
-        .split('/')
-        .next_back()
-        .unwrap()
-        .to_string();
-    let client = reqwest::blocking::Client::new();
-    let res = client.get(url).send().unwrap();
-    let len = res.content_length();
-    let mut res: Box<dyn Read> = if let Some(len) = len {
-        Box::new(UploadProgress::new(res, &target_filename, len))
-    } else {
-        Box::new(res)
-    };
-    let mut temp_file = tempfile().unwrap();
-    std::io::copy(&mut res, &mut temp_file).unwrap();
-    let mut zip_file = ZipArchive::new(temp_file).unwrap();
-    zip_file.extract(".").unwrap();
-}
-#[rune::function]
-fn from_file(url: &str) {
-    let target_filename = url
-        .trim_end_matches('/')
-        .split('/')
-        .next_back()
-        .unwrap()
-        .to_string();
-    let client = reqwest::blocking::Client::new();
-    let res = client.get(url).send().unwrap();
-    let len = res.content_length();
-    let mut res: Box<dyn Read> = if let Some(len) = len {
-        Box::new(UploadProgress::new(res, &target_filename, len))
-    } else {
-        Box::new(res)
-    };
-    let mut file = File::create(target_filename).unwrap();
-    std::io::copy(&mut res, &mut file).unwrap();
-}
-#[rune::function]
-fn from_file_dest(url: &str, dest: &str) {
-    let target_filename = url
-        .trim_end_matches('/')
-        .split('/')
-        .next_back()
-        .unwrap()
-        .to_string();
-    let client = reqwest::blocking::Client::new();
-    let res = client.get(url).send().unwrap();
-    let len = res.content_length();
-    let mut res: Box<dyn Read> = if let Some(len) = len {
-        Box::new(UploadProgress::new(res, &target_filename, len))
-    } else {
-        Box::new(res)
-    };
-    let mut file = File::create(dest).unwrap();
-    std::io::copy(&mut res, &mut file).unwrap();
-}
-
-pub fn module() -> Result<Module, ContextError> {
-    let mut m = Module::with_crate("sources")?;
-    m.function_meta(from_tar_xz)?;
-    m.function_meta(from_tar_gz)?;
-    m.function_meta(from_zip)?;
-    m.function_meta(from_file)?;
-    m.function_meta(from_file_dest)?;
-    Ok(m)
 }

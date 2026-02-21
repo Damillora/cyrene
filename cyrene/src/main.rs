@@ -1,36 +1,43 @@
 use std::{fs, path::PathBuf, sync::Arc};
 
-use clap::{Args, Parser, Subcommand, command};
+use crate::{tables::CyreneAppVersionsAllRow, util::is_major_version_equal};
+use clap::{Args, Parser, Subcommand};
 use console::{Color, Style, style};
-use dialoguer::{Confirm, theme::ColorfulTheme};
+use dialoguer::Confirm;
+use dialoguer::theme::ColorfulTheme;
+use log::debug;
 use miette::{ErrReport, IntoDiagnostic};
 use semver::Version;
 
 use crate::{
-    dirs::CyreneDirs, errors::CyreneError, lockfile::CyreneLockfileManager, manager::CyreneManager,
-    tables::CyreneAppVersionsAllRow, util::is_major_version_equal,
+    dirs::CyreneDirs,
+    errors::CyreneError,
+    lockfile::CyreneLockfileManager,
+    manager::CyreneManager,
+    transaction::{TransactionCommands, TransactionExecutor},
     versions_cache::CyreneVersionCacheManager,
 };
-/// Cyrene app definition
-pub mod app;
-/// Modules used by Cyrene app scripts
-pub mod app_module;
-/// Directory management
-pub mod dirs;
-/// Error definitions
-pub mod errors;
+
+/// App
+mod app;
+/// Modules for app processing
+mod app_module;
+/// Directories
+mod dirs;
+/// Errors
+mod errors;
 /// Lockfile
-pub mod lockfile;
-/// Main Cyrene manager logic
-pub mod manager;
-/// Cyrene response structs
-pub mod responses;
-/// Cyrene tables
-pub mod tables;
-/// Various Cyrene utilities
-pub mod util;
-/// Cyrene version caching
-pub mod versions_cache;
+mod lockfile;
+/// Manager
+mod manager;
+/// Table models
+mod tables;
+/// Install transactions
+mod transaction;
+/// Utilities
+mod util;
+/// Versions cache
+mod versions_cache;
 
 pub struct AppVersion {
     name: String,
@@ -150,12 +157,13 @@ pub struct AppLoadOpts {
     #[arg(short = 'd', long)]
     default: bool,
 }
-fn main() -> Result<(), ErrReport> {
-    start().into_diagnostic()?;
+#[tokio::main]
+async fn main() -> Result<(), ErrReport> {
+    start().await.into_diagnostic()?;
 
     Ok(())
 }
-fn start() -> Result<(), CyreneError> {
+async fn start() -> Result<(), CyreneError> {
     env_logger::init();
     let cli = Cli::parse();
 
@@ -164,7 +172,11 @@ fn start() -> Result<(), CyreneError> {
     let cache_manager = Box::new(CyreneVersionCacheManager::new(&dirs.version_cache_path));
     let lockfile_manager = Box::new(CyreneLockfileManager::new(&dirs.lockfile_path()));
 
-    let mut actions = CyreneManager::new(dirs, lockfile_manager, cache_manager)?;
+    let actions = Arc::new(CyreneManager::new(
+        dirs.clone(),
+        lockfile_manager,
+        cache_manager,
+    ));
 
     match cli.command {
         Commands::Install(app_install_opts) => {
@@ -178,16 +190,17 @@ fn start() -> Result<(), CyreneError> {
                         ver.to_string()
                     } else {
                         actions
-                            .get_latest_major_release(&app.name, ver.as_str())?
-                            .ok_or(CyreneError::AppVersionNotFoundError(
-                                ver.to_string(),
+                            .get_latest_major_release(&app.name, ver.as_str())
+                            .await?
+                            .ok_or(CyreneError::AppVersionNotFound(
                                 app.name.clone(),
+                                ver.to_string(),
                             ))?
                     }
                 } else {
-                    actions.get_latest_version(&app.name)?
+                    actions.get_latest_version(&app.name).await?
                 };
-                if actions.package_exists(&app.name, &install_version)? {
+                if actions.is_version_installed(&app.name, &install_version)? {
                     app_actions_unneeded.push(AppVersionAction {
                         name: app.name,
                         version: install_version,
@@ -204,13 +217,14 @@ fn start() -> Result<(), CyreneError> {
                 tables::cyrene_app_install_unneeded(&app_actions_unneeded);
             }
             if !app_actions.is_empty() {
-                let len = app_actions.len();
                 println!();
                 tables::cyrene_app_install(&app_actions);
                 println!();
 
-                let mut theme = ColorfulTheme::default();
-                theme.prompt_style = Style::new().fg(Color::Color256(219));
+                let theme = ColorfulTheme {
+                    prompt_style: Style::new().fg(Color::Color256(219)),
+                    ..Default::default()
+                };
                 if Confirm::with_theme(&theme)
                     .default(false)
                     .show_default(true)
@@ -219,39 +233,37 @@ fn start() -> Result<(), CyreneError> {
                         "Proceed with {}?",
                         style("installation").fg(Color::Green).bold()
                     ))
-                    .interact()?
+                    .interact()
+                    .map_err(CyreneError::Interaction)?
                 {
-                    for (i, app_action) in app_actions.iter().enumerate() {
+                    let mut transaction = TransactionExecutor::new(actions.clone());
+                    for app_action in app_actions.iter() {
                         let linked_version = actions.find_installed_version(&app_action.name)?;
-                        println!(
-                            "[{}/{}] Installing {} version {}",
-                            i + 1,
-                            len,
-                            style(&app_action.name).fg(Color::Color256(219)).bold(),
-                            style(&app_action.version).fg(Color::Green).bold(),
-                        );
-                        actions.install_specific_version(&app_action.name, &app_action.version)?;
+                        transaction.add(TransactionCommands::Install {
+                            app: app_action.name.clone(),
+                            version: app_action.version.clone(),
+                        });
                         if let Some(linked_version) = &linked_version
-                            && is_major_version_equal(&linked_version, &app_action.version)?
+                            && is_major_version_equal(linked_version, &app_action.version)?
                         {
-                            actions.update_lockfile(&app_action.name, Some(&app_action.version))?;
-                        } else if let None = linked_version {
-                            actions.update_lockfile(&app_action.name, Some(&app_action.version))?;
+                            transaction.add(TransactionCommands::LockfileUpdate {
+                                app: app_action.name.clone(),
+                                version: Some(app_action.version.clone()),
+                            });
+                        } else if linked_version.is_none() {
+                            transaction.add(TransactionCommands::LockfileUpdate {
+                                app: app_action.name.clone(),
+                                version: Some(app_action.version.clone()),
+                            });
                         }
-                        let not_overwritten_exists =
-                            actions.link_binaries(&app_action.name, &app_action.version, false)?;
-                        if not_overwritten_exists {
-                            println!(
-                                "An existing version is already installed. {}:",
-                                style("To use the newly installed binaries, run").fg(Color::Yellow)
-                            );
-                            println!();
-                            println!(
-                                "    cyrene link {} {}",
-                                &app_action.name, &app_action.version
-                            );
-                        };
+                        transaction.add(TransactionCommands::Link {
+                            app: app_action.name.clone(),
+                            version: app_action.version.clone(),
+                            overwrite: false,
+                        });
                     }
+
+                    transaction.execute().await?;
                 } else {
                     println!("{}", style("Aborted").fg(console::Color::Red))
                 }
@@ -261,68 +273,7 @@ fn start() -> Result<(), CyreneError> {
 
             Ok(())
         }
-        Commands::Link(app_install_opts) => {
-            let version = if Version::parse(&app_install_opts.version).is_ok() {
-                Some(app_install_opts.version)
-            } else {
-                actions.find_installed_major_release(
-                    &app_install_opts.name,
-                    &app_install_opts.version,
-                )?
-            }
-            .ok_or(CyreneError::AppNotInstalledError(
-                app_install_opts.name.clone(),
-            ))?;
-            println!(
-                "[{}/{}] Linking binaries for {} version {}",
-                1,
-                1,
-                style(&app_install_opts.name)
-                    .fg(Color::Color256(219))
-                    .bold(),
-                style(&version).fg(Color::Green).bold(),
-            );
-            actions.link_binaries(&app_install_opts.name, &version, true)?;
-            actions.update_lockfile(&app_install_opts.name, Some(&version))?;
-            Ok(())
-        }
-        Commands::Unlink(app_install_opts) => {
-            println!(
-                "[{}/{}] Unlinking binaries for {}",
-                1,
-                1,
-                style(&app_install_opts.name)
-                    .fg(Color::Color256(219))
-                    .bold()
-            );
-            actions.unlink_binaries(&app_install_opts.name)?;
-            Ok(())
-        }
-        Commands::Refresh(app_version_opts) => {
-            if let Some(name) = app_version_opts.name {
-                println!(
-                    "[{}/{}] Updating versions database for {}",
-                    1,
-                    1,
-                    style(&name).fg(Color::Color256(219)).bold()
-                );
-                actions.update_versions(&name)
-            } else {
-                let list_apps = actions.list_apps()?;
-                let len = list_apps.len();
-                for (i, name) in list_apps.iter().enumerate() {
-                    println!(
-                        "[{}/{}] Updating versions database for {}",
-                        i + 1,
-                        len,
-                        style(&name).fg(Color::Color256(219)).bold()
-                    );
-                    actions.update_versions(name)?;
-                }
-                Ok(())
-            }
-        }
-        Commands::Upgrade(app_install_opts) => app_upgrade(&mut actions, &app_install_opts),
+        Commands::Upgrade(app_install_opts) => app_upgrade(actions, &app_install_opts).await,
         Commands::Uninstall(app_install_opts) => {
             let app_to_be_installed: Vec<_> =
                 app_install_opts.apps.iter().map(AppVersion::from).collect();
@@ -331,14 +282,14 @@ fn start() -> Result<(), CyreneError> {
                 let version = match &app.version {
                     Some(version) => {
                         if Version::parse(version).is_ok() {
-                            actions.package_exists(&app.name, version.as_str())?;
+                            actions.is_version_installed(&app.name, version.as_str())?;
                             Some(version.to_string())
                         } else {
                             let version = actions
                                 .find_installed_major_release(&app.name, version.as_str())?
-                                .ok_or(CyreneError::AppVersionNotFoundError(
-                                    version.to_string(),
+                                .ok_or(CyreneError::AppVersionNotFound(
                                     app.name.to_string(),
+                                    version.to_string(),
                                 ))?;
 
                             Some(version)
@@ -352,12 +303,13 @@ fn start() -> Result<(), CyreneError> {
                 });
             }
             if !app_actions.is_empty() {
-                let len = app_actions.len();
                 println!();
                 tables::cyrene_app_remove(&app_actions);
                 println!();
-                let mut theme = ColorfulTheme::default();
-                theme.prompt_style = Style::new().fg(Color::Color256(219));
+                let theme = ColorfulTheme {
+                    prompt_style: Style::new().fg(Color::Color256(219)),
+                    ..Default::default()
+                };
                 if Confirm::with_theme(&theme)
                     .default(false)
                     .show_default(true)
@@ -366,38 +318,115 @@ fn start() -> Result<(), CyreneError> {
                         "Proceed with {}?",
                         style("uninstallation").fg(Color::Red).bold()
                     ))
-                    .interact()?
+                    .interact()
+                    .map_err(CyreneError::Interaction)?
                 {
-                    for (i, app_action) in app_actions.iter().enumerate() {
+                    let mut transaction = TransactionExecutor::new(actions.clone());
+                    for app_action in app_actions.iter() {
                         match &app_action.version {
                             Some(ver) => {
-                                println!(
-                                    "[{}/{}] Uninstalling {} version {}",
-                                    i + 1,
-                                    style(len).fg(Color::Color256(219)),
-                                    style(&app_action.name).fg(Color::Color256(219)).bold(),
-                                    style(ver).fg(Color::Red).bold()
-                                );
-                                actions.uninstall(&app_action.name, ver)?;
+                                transaction.add(TransactionCommands::Remove {
+                                    app: app_action.name.clone(),
+                                    version: ver.clone(),
+                                });
+                                let current_version = actions
+                                    .find_installed_version(&app_action.name)?
+                                    .ok_or(CyreneError::AppNotInstalled(
+                                        app_action.name.clone(),
+                                        "".to_string(),
+                                    ))?;
+                                let uninstalled_is_linked_version = current_version.eq(ver);
+                                if uninstalled_is_linked_version {
+                                    debug!(
+                                        "App version {} for plugin {} is in use, unlinking app versions",
+                                        app_action.name, ver
+                                    );
+                                    transaction.add(TransactionCommands::Unlink {
+                                        app: app_action.name.clone(),
+                                    });
+                                    let get_release = actions
+                                        .find_installed_major_release(&app_action.name, "*")?;
+                                    if let Some(get_release) = get_release {
+                                        debug!(
+                                            "Using latest app versions {} for plugin {} after uninstall",
+                                            get_release, &app_action.name
+                                        );
+                                        transaction.add(TransactionCommands::Link {
+                                            app: app_action.name.clone(),
+                                            version: ver.clone(),
+                                            overwrite: true,
+                                        });
+                                        transaction.add(TransactionCommands::LockfileUpdate {
+                                            app: app_action.name.clone(),
+                                            version: Some(get_release),
+                                        });
+                                    } else {
+                                        transaction.add(TransactionCommands::RemoveAll {
+                                            app: app_action.name.clone(),
+                                        });
+                                        transaction.add(TransactionCommands::LockfileUpdate {
+                                            app: app_action.name.clone(),
+                                            version: None,
+                                        });
+                                    }
+                                }
                             }
                             None => {
-                                println!(
-                                    "[{}/{}] Uninstalling {} version {}",
-                                    i + 1,
-                                    style(len).fg(Color::Color256(219)),
-                                    style(&app_action.name).fg(Color::Color256(219)),
-                                    style("ALL").fg(Color::Red),
-                                );
-                                actions.uninstall_all(&app_action.name)?;
+                                transaction.add(TransactionCommands::RemoveAll {
+                                    app: app_action.name.clone(),
+                                });
+                                transaction.add(TransactionCommands::Unlink {
+                                    app: app_action.name.clone(),
+                                });
+                                transaction.add(TransactionCommands::LockfileUpdate {
+                                    app: app_action.name.clone(),
+                                    version: None,
+                                });
                             }
                         };
                     }
+
+                    transaction.execute().await?;
                 } else {
                     println!("{}", style("Aborted").fg(console::Color::Red));
                 }
             } else {
                 println!("{}", style("No action needed").fg(console::Color::Green));
             }
+            Ok(())
+        }
+        Commands::Link(app_install_opts) => {
+            let version = if Version::parse(&app_install_opts.version).is_ok() {
+                Some(app_install_opts.version.clone())
+            } else {
+                actions.find_installed_major_release(
+                    &app_install_opts.name,
+                    &app_install_opts.version,
+                )?
+            }
+            .ok_or(CyreneError::AppNotInstalled(
+                app_install_opts.name.clone(),
+                app_install_opts.version.clone(),
+            ))?;
+            let mut transaction = TransactionExecutor::new(actions);
+            transaction.add(TransactionCommands::Link {
+                app: app_install_opts.name.clone(),
+                version: version.clone(),
+                overwrite: true,
+            });
+            transaction.add(TransactionCommands::LockfileUpdate {
+                app: app_install_opts.name.clone(),
+                version: Some(version.clone()),
+            });
+            transaction.execute().await?;
+            Ok(())
+        }
+        Commands::Unlink(app_install_opts) => {
+            let mut transaction = TransactionExecutor::new(actions);
+            transaction.add(TransactionCommands::Unlink {
+                app: app_install_opts.name.clone(),
+            });
+            transaction.execute().await?;
             Ok(())
         }
         Commands::List(app_version_opts) => {
@@ -410,10 +439,10 @@ fn start() -> Result<(), CyreneError> {
                     let versions: Vec<_> = versions
                         .iter()
                         .map(|f| CyreneAppVersionsAllRow {
-                            name: f.name.clone(),
-                            version: f.version.clone(),
-                            linked: match lockfile_versions.get(&f.name) {
-                                Some(ver) => f.version.eq(ver),
+                            name: f.0.clone(),
+                            version: f.1.clone(),
+                            linked: match lockfile_versions.get(&f.0) {
+                                Some(ver) => f.1.eq(ver),
                                 None => false,
                             },
                         })
@@ -428,7 +457,8 @@ fn start() -> Result<(), CyreneError> {
         }
         Commands::Versions(app_version_opts) => {
             let versions: Vec<(String, String)> = actions
-                .versions(&app_version_opts.name)?
+                .versions(&app_version_opts.name)
+                .await?
                 .iter()
                 .map(|f| (app_version_opts.name.clone(), f.to_string()))
                 .collect();
@@ -437,21 +467,50 @@ fn start() -> Result<(), CyreneError> {
 
             Ok(())
         }
+        Commands::Refresh(app_version_opts) => {
+            if let Some(name) = app_version_opts.name {
+                println!(
+                    "Updating versions database for {}",
+                    style(&name).fg(Color::Color256(219)).bold()
+                );
+                actions.update_versions(&name).await
+            } else {
+                let list_apps = actions.list_apps()?;
+                for name in list_apps.iter() {
+                    println!(
+                        "Updating versions database for {}",
+                        style(&name).fg(Color::Color256(219)).bold()
+                    );
+                    actions.update_versions(name).await?;
+                }
+                Ok(())
+            }
+        }
         Commands::Load(app_load_opts) => {
+            let mut transactions = TransactionExecutor::new(actions.clone());
             if app_load_opts.default {
-                actions.load_lockfile(None)?;
+                let txs = actions.load_lockfile(None).await?;
+                for tx in txs {
+                    transactions.add(tx);
+                }
             } else {
                 let lockfile_path = if let Some(path) = app_load_opts.lockfile {
                     PathBuf::from(path)
                 } else {
                     PathBuf::from("cyrene.toml")
                 };
-                if !fs::exists(&lockfile_path)? {
-                    return Err(CyreneError::LockfileNotFoundError);
+                if !fs::exists(&lockfile_path)
+                    .map_err(|e| CyreneError::LockfileLocalRead(lockfile_path.clone(), e))?
+                {
+                    return Err(CyreneError::LockfileNotFoundError(lockfile_path.clone()));
                 }
 
-                actions.load_lockfile(Some(&lockfile_path))?;
+                let txs = actions.load_lockfile(None).await?;
+                for tx in txs {
+                    transactions.add(tx);
+                }
             }
+            transactions.execute().await?;
 
             Ok(())
         }
@@ -459,8 +518,8 @@ fn start() -> Result<(), CyreneError> {
     }
 }
 
-fn app_upgrade(
-    actions: &mut CyreneManager,
+async fn app_upgrade(
+    actions: Arc<CyreneManager>,
     app_install_opts: &AppUpgradeOpts,
 ) -> Result<(), CyreneError> {
     let app_to_be_installed: Vec<_> = if let Some(apps) = &app_install_opts.apps {
@@ -482,20 +541,22 @@ fn app_upgrade(
             Some(ver) => actions.find_installed_major_release(&app.name, ver)?,
             None => actions.find_installed_version(&app.name)?,
         }
-        .ok_or(CyreneError::AppVersionNotInstalledError(
+        .ok_or(CyreneError::AppNotInstalled(
+            app.name.to_string(),
             match &app.version {
                 Some(ver) => ver.to_string(),
                 None => "latest".to_string(),
             },
-            app.name.to_string(),
         ))?;
         let upgrade_latest = actions.check_upgrade_latest(&app.name)?;
         let new_version = if upgrade_latest {
-            actions.get_latest_major_release(&app.name, "*")?
+            actions.get_latest_major_release(&app.name, "*").await?
         } else {
-            actions.get_latest_major_release(&app.name, &old_version)?
+            actions
+                .get_latest_major_release(&app.name, &old_version)
+                .await?
         }
-        .ok_or(CyreneError::AppVersionNotFoundError(
+        .ok_or(CyreneError::AppVersionNotFound(
             app.name.clone(),
             old_version.clone(),
         ))?;
@@ -518,12 +579,13 @@ fn app_upgrade(
         tables::cyrene_app_upgrade_unneeded(&app_actions_unneeded);
     }
     if !app_actions.is_empty() {
-        let len = app_actions.len();
         println!();
         tables::cyrene_app_upgrade(&app_actions);
         println!();
-        let mut theme = ColorfulTheme::default();
-        theme.prompt_style = Style::new().fg(Color::Color256(219));
+        let theme = ColorfulTheme {
+            prompt_style: Style::new().fg(Color::Color256(219)),
+            ..Default::default()
+        };
         if Confirm::with_theme(&theme)
             .default(false)
             .show_default(true)
@@ -532,22 +594,34 @@ fn app_upgrade(
                 "Proceed with {}?",
                 style("upgrade").fg(Color::Green).bold()
             ))
-            .interact()?
+            .interact()
+            .map_err(CyreneError::Interaction)?
         {
-            for (i, app_action) in app_actions.iter().enumerate() {
-                println!(
-                    "[{}/{}] Upgrading {} version {} -> {}",
-                    i + 1,
-                    style(len).fg(Color::Color256(219)),
-                    style(&app_action.name).fg(Color::Color256(219)).bold(),
-                    style(&app_action.old_version).fg(Color::Red).bold(),
-                    style(&app_action.new_version).fg(Color::Green).bold()
-                );
-                actions.upgrade(
-                    &app_action.name,
-                    &app_action.old_version,
-                    &app_action.new_version,
+            let mut transactions = TransactionExecutor::new(actions.clone());
+            for app_action in app_actions.iter() {
+                let current_installed = actions.find_installed_version(&app_action.name)?.ok_or(
+                    CyreneError::LockfileAppVersion(app_action.name.to_string(), "".to_string()),
                 )?;
+                let overwrite_installed = current_installed.eq(&app_action.old_version);
+                transactions.add(TransactionCommands::Install {
+                    app: app_action.name.clone(),
+                    version: app_action.new_version.clone(),
+                });
+                transactions.add(TransactionCommands::Link {
+                    app: app_action.name.clone(),
+                    version: app_action.new_version.clone(),
+                    overwrite: overwrite_installed,
+                });
+                transactions.add(TransactionCommands::LockfileUpdate {
+                    app: app_action.name.clone(),
+                    version: Some(app_action.new_version.clone()),
+                });
+                transactions.add(TransactionCommands::Remove {
+                    app: app_action.name.clone(),
+                    version: app_action.old_version.clone(),
+                });
+
+                transactions.execute().await?;
             }
         } else {
             println!("{}", style("Aborted").fg(console::Color::Red))
