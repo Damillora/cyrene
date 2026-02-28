@@ -17,9 +17,14 @@ pub struct CyreneApp {
     pub binaries: HashMap<String, String>,
     pub post_install: Option<Vec<AppPostInstallCommands>>,
 }
+fn default_true() -> bool {
+    true
+}
 #[derive(Serialize, Deserialize)]
 pub struct AppSettings {
     pub upgrade_latest: bool,
+    #[serde(default = "default_true")]
+    pub semver: bool,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -37,7 +42,7 @@ pub enum AppVersions {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AppVersionsGithubCommand {
     StripPrefix { prefix: String },
-    Replace { str: String, with: String},
+    Replace { str: String, with: String },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -149,7 +154,7 @@ url = "https://github.com/Damillora/cyrene/releases/download/${env.version}/cyre
 cyrene = "cyrene-x86_64-unknown-linux-gnu/cyrene"
 "#;
         let app: CyreneApp = toml::de::from_str(&config).unwrap();
-        if let AppVersions::Github { repo } = app.versions {
+        if let AppVersions::Github { repo, command } = app.versions {
             assert_eq!(repo, "Damillora/cyrene");
         } else {
             panic!("Not GitHub source");

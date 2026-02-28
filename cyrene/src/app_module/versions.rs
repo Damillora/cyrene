@@ -40,6 +40,10 @@ async fn process_github(
     headers.insert("Accept", "application/vnd.github+json".parse().unwrap());
     headers.insert("X-GitHub-Api-Version", "2022-11-28".parse().unwrap());
     headers.insert("User-Agent", "damillora-cyrene".parse().unwrap());
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        debug!("Found GitHub token");
+        headers.insert("Authorization", format!("Bearer {}", token).parse().unwrap());
+    }
     debug!("Getting release info from {}", repo);
     let mut versions: Vec<String> = Vec::new();
     let mut still_more_stuff = true;
@@ -73,8 +77,7 @@ async fn process_github(
             .filter(|f| !f.prerelease)
             .map(|f| {
                 debug!("found version: {}", f.tag_name);
-                let tag_name = f.tag_name.to_string();
-                tag_name
+                f.tag_name.to_string()
             })
             .collect();
         if a.len() < 100 {
@@ -98,9 +101,6 @@ async fn process_github(
             }
         }
     }
-    versions = versions.iter().map(|e| {
-        sanitize_version(&e, &ver_regex)
-    }).collect();
     Ok(versions)
 }
 
@@ -108,8 +108,6 @@ async fn process_url(
     url: &Url,
     command: &Vec<AppVersionsUrlCommand>,
 ) -> Result<Vec<String>, CyreneError> {
-    let ver_regex = Regex::new(r"(.*)-v?([0-9\.]*)").unwrap();
-
     let mut headers = header::HeaderMap::new();
     headers.insert("User-Agent", "damillora-cyrene".parse().unwrap());
     debug!("Getting release info from {}", url);
@@ -147,15 +145,6 @@ async fn process_url(
             }
         }
     }
-    results = results
-        .iter()
-        .map(|f| {
-            debug!("found version: {}", f);
-            let mut version = f.to_string();
-            version = sanitize_version(&version, &ver_regex);
-            version
-        })
-        .collect();
     Ok(results)
 }
 

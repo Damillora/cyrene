@@ -1,13 +1,14 @@
 use std::{fs, path::PathBuf, sync::Arc};
 
-use crate::{tables::CyreneAppVersionsAllRow, util::is_major_version_equal};
+use crate::{
+    tables::CyreneAppVersionsAllRow, util::is_major_version_equal, version::CyreneVersion,
+};
 use clap::{Args, Parser, Subcommand};
 use console::{Color, Style, style};
 use dialoguer::Confirm;
 use dialoguer::theme::ColorfulTheme;
 use log::debug;
 use miette::{ErrReport, IntoDiagnostic};
-use semver::Version;
 
 use crate::{
     dirs::CyreneDirs,
@@ -38,6 +39,8 @@ mod tables;
 mod transaction;
 /// Utilities
 mod util;
+/// Version comparer
+mod version;
 /// Versions cache
 mod versions_cache;
 
@@ -187,8 +190,12 @@ async fn start() -> Result<(), CyreneError> {
             let mut app_actions: Vec<AppVersionAction> = Vec::new();
             let mut app_actions_unneeded: Vec<AppVersionAction> = Vec::new();
             for app in app_to_be_installed {
+                let app_config = actions.load_app(&app.name)?;
+
                 let install_version = if let Some(ver) = &app.version {
-                    if Version::parse(ver).is_ok() {
+                    if !app_config.settings.semver {
+                        ver.to_string()
+                    } else if let CyreneVersion::Semver(_) = CyreneVersion::parse(ver) {
                         ver.to_string()
                     } else {
                         actions
@@ -281,9 +288,14 @@ async fn start() -> Result<(), CyreneError> {
                 app_install_opts.apps.iter().map(AppVersion::from).collect();
             let mut app_actions: Vec<AppVersion> = Vec::new();
             for app in app_to_be_installed {
+                let app_config = actions.load_app(&app.name)?;
+
                 let version = match &app.version {
                     Some(version) => {
-                        if Version::parse(version).is_ok() {
+                        if !app_config.settings.semver {
+                            actions.is_version_installed(&app.name, version.as_str())?;
+                            Some(version.to_string())
+                        } else if let CyreneVersion::Semver(_) = CyreneVersion::parse(version) {
                             actions.is_version_installed(&app.name, version.as_str())?;
                             Some(version.to_string())
                         } else {
@@ -398,7 +410,12 @@ async fn start() -> Result<(), CyreneError> {
             Ok(())
         }
         Commands::Link(app_install_opts) => {
-            let version = if Version::parse(&app_install_opts.version).is_ok() {
+            let app_config = actions.load_app(&app_install_opts.name)?;
+
+            let version = if !app_config.settings.semver {
+                Some(app_install_opts.version.clone())
+            } else if let CyreneVersion::Semver(_) = CyreneVersion::parse(&app_install_opts.version)
+            {
                 Some(app_install_opts.version.clone())
             } else {
                 actions.find_installed_major_release(

@@ -6,11 +6,11 @@ use std::{
 };
 
 use log::debug;
-use semver::Version;
 
 use crate::{
     app::CyreneApp, dirs::CyreneDirs, errors::CyreneError, lockfile::CyreneLockfileManager,
-    transaction::TransactionCommands, util, versions_cache::CyreneVersionCacheManager,
+    transaction::TransactionCommands, util, version::CyreneVersion,
+    versions_cache::CyreneVersionCacheManager,
 };
 
 pub struct CyreneManager {
@@ -80,8 +80,8 @@ impl CyreneManager {
             .map(|p| p.path().file_name().unwrap().to_string_lossy().to_string())
             .collect();
         a.sort_by(|a, b| {
-            let a = Version::parse(a).unwrap();
-            let b = Version::parse(b).unwrap();
+            let a = CyreneVersion::parse(a);
+            let b = CyreneVersion::parse(b);
             b.cmp(&a)
         });
         let a = a
@@ -116,6 +116,7 @@ impl CyreneManager {
         name: &str,
         version: &str,
     ) -> Result<Option<String>, CyreneError> {
+        let app_config = self.load_app(name)?;
         let installation_root = self.dirs.installation_root(name);
         if !fs::exists(&installation_root)
             .map_err(|e| CyreneError::AppCheck(name.to_string(), version.to_string(), e))?
@@ -130,11 +131,11 @@ impl CyreneManager {
             .map(|p| p.path().file_name().unwrap().to_string_lossy().to_string())
             .collect();
         a.sort_by(|a, b| {
-            let a = Version::parse(a).unwrap();
-            let b = Version::parse(b).unwrap();
+            let a = CyreneVersion::parse(a);
+            let b = CyreneVersion::parse(b);
             b.cmp(&a)
         });
-        let latest_installed_release = util::search_in_version(a, version);
+        let latest_installed_release = util::search_in_version(app_config.settings.semver, a, version);
 
         let a = latest_installed_release;
         Ok(a)
@@ -154,10 +155,11 @@ impl CyreneManager {
         name: &str,
         old_version: &str,
     ) -> Result<Option<String>, CyreneError> {
+        let app_config = self.load_app(name)?;
         let versions = self.versions(name).await?;
 
         // Get needed version
-        let required_version = util::search_in_version(versions, old_version);
+        let required_version = util::search_in_version(app_config.settings.semver, versions, old_version);
 
         Ok(required_version)
     }

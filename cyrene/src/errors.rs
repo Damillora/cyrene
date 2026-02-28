@@ -29,8 +29,6 @@ pub enum CyreneError {
     AppDeserialize(toml::de::Error),
     #[error("Unable to read app from {0}: {1}")]
     AppRead(PathBuf, std::io::Error),
-    #[error("Unable to parse version string {0}: {1}")]
-    VersionParse(String, semver::Error),
     #[error("Unable to fetch version info from {0}: {1}")]
     VersionFetch(String, reqwest::Error),
     #[error("Unable to execute JSON query {0}: {1}")]

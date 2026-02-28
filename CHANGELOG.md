@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - BREAKING CHANGE: Change lockfile filename
 - BREAKING CHANGE: Switch recipes from Rune scripts to plain TOML files
+- Add handling of non-semver versions
 - Add version commands for GitHub
 - Add cyrene config to replace cyrene_env.sh
 - Install binaries from ZIP files.
