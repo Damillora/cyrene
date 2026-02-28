@@ -1,3 +1,4 @@
+
 use jsonpath_rust::JsonPath;
 use log::debug;
 use reqwest::header;
@@ -85,6 +86,10 @@ async fn process_github(
             }
         }
     }
+    // Automatically strip prefix in the end
+    if versions.iter().any(|e| e.starts_with("v")) {
+        versions = versions.iter().map(|e| e.strip_prefix("v").unwrap_or(e).to_string()).collect();
+    }
     Ok(versions)
 }
 
@@ -128,6 +133,10 @@ async fn process_url(
                     .collect();
             }
         }
+    }
+    // Automatically strip prefix in the end
+    if results.iter().any(|e| e.starts_with("v")) {
+        results = results.iter().map(|e| e.strip_prefix("v").unwrap_or(e).to_string()).collect();
     }
     Ok(results)
 }

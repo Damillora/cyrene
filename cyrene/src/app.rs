@@ -173,7 +173,7 @@ upgrade_latest = false
 type = "url"
 url = "https://nodejs.org/dist/index.json"
 
-[versions.command]
+[[versions.command]]
 type = "jsonpath"
 query = "$[*].version"
 
