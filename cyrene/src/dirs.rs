@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf};
 use directories::ProjectDirs;
 use log::debug;
 
-use crate::errors::CyreneError;
+use crate::{config::CyreneConfig, errors::CyreneError};
 
 pub struct CyreneDirs {
     pub apps_dir: PathBuf,
@@ -47,7 +47,7 @@ impl CyreneDirs {
     }
     pub fn lockfile_path(&self) -> PathBuf {
         let mut lockfile_path = self.config_dir.clone();
-        lockfile_path.push("cyrene.toml");
+        lockfile_path.push("cyrene.lock");
 
         lockfile_path
     }
@@ -66,46 +66,70 @@ impl CyreneDirs {
         Ok(installation_path)
     }
 }
-impl Default for CyreneDirs {
-    fn default() -> Self {
+impl CyreneDirs {
+    pub fn new(config_path: &Option<String>) -> Result<Self, CyreneError> {
         let proj_dirs = ProjectDirs::from("com", "Damillora", "Cyrene").unwrap();
+
+        let config_path = if let Some(conf) = config_path {
+            PathBuf::from(conf)
+        } else {
+            let mut config_path = proj_dirs.config_dir().to_path_buf();
+            config_path.push("cyrene.toml");
+
+            config_path
+        };
+        let config = CyreneConfig::load(&config_path)?;
         let apps_dir = match std::env::var("CYRENE_APPS_DIR") {
             Ok(env) => PathBuf::from(env),
             Err(_) => {
-                let mut data_dir = proj_dirs.data_dir().to_path_buf();
-                data_dir.push("apps");
+                if let Some(apps_dir) =  &config.apps_dir {
+                    apps_dir.clone()
+                } else {
+                    let mut data_dir = proj_dirs.data_dir().to_path_buf();
+                    data_dir.push("apps");
 
-                data_dir
+                    data_dir
+                }
             }
         };
         let plugins_dir = match std::env::var("CYRENE_PLUGINS_DIR") {
             Ok(env) => PathBuf::from(env),
             Err(_) => {
-                let mut data_dir = proj_dirs.data_dir().to_path_buf();
-                data_dir.push("plugins");
+                if let Some(plugins_dir) =  &config.plugins_dir {
+                    plugins_dir.clone()
+                } else {
+                    let mut data_dir = proj_dirs.data_dir().to_path_buf();
+                    data_dir.push("plugins");
 
-                data_dir
+                    data_dir
+                }
             }
         };
         let config_dir = proj_dirs.config_dir().to_path_buf();
         let exe_dir = match std::env::var("CYRENE_INSTALL_DIR") {
             Ok(env) => PathBuf::from(env),
-            Err(_) => std::env::current_exe()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .to_path_buf(),
+            Err(_) => {
+                if let Some(install_dir) =  &config.install_dir {
+                    install_dir.clone()
+                } else {
+                    std::env::current_exe()
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .to_path_buf()
+                }
+            }
         };
         let cache_dir = proj_dirs.cache_dir().to_path_buf();
         let mut versions_cache_dir = cache_dir.clone();
         versions_cache_dir.push("versions.yaml");
-        Self {
+        Ok(Self {
             apps_dir,
             plugins_dir,
             config_dir,
             exe_dir,
             cache_dir,
             version_cache_path: versions_cache_dir,
-        }
+        })
     }
 }

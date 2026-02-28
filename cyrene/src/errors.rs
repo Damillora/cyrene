@@ -73,4 +73,12 @@ pub enum CyreneError {
     EnvWrite(std::io::Error),
     #[error("Non existent app {0} version {1} in lockfile")]
     LockfileAppVersion(String, String),
+    #[error("Unable to read config: {0}")]
+    ConfigRead(std::io::Error),
+    #[error("Unable to write config: {0}")]
+    ConfigWrite(std::io::Error),
+    #[error("Unable to deserialize config: {0}")]
+    ConfigDeserialize(toml::de::Error),
+    #[error("Unable to serialize config: {0}")]
+    ConfigSerialize(toml::ser::Error),
 }

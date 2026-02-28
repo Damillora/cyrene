@@ -22,6 +22,8 @@ use crate::{
 mod app;
 /// Modules for app processing
 mod app_module;
+/// Configuration
+mod config;
 /// Directories
 mod dirs;
 /// Errors
@@ -73,6 +75,9 @@ impl From<&String> for AppVersion {
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 pub struct Cli {
+    /// Configuration file location
+    #[arg(short = 'c', long)]
+    config: Option<String>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -95,10 +100,8 @@ pub enum Commands {
     Versions(AppVersionsOpts),
     /// Refresh versions of a binary
     Refresh(AppRefreshOpts),
-    /// Load cyrene.toml lockfiles in a directory
+    /// Load cyrene lockfiles in a directory
     Load(AppLoadOpts),
-    /// Generate environment variables needed by cyrene
-    Env,
 }
 
 #[derive(Args)]
@@ -166,8 +169,7 @@ async fn main() -> Result<(), ErrReport> {
 async fn start() -> Result<(), CyreneError> {
     env_logger::init();
     let cli = Cli::parse();
-
-    let dirs = Arc::new(CyreneDirs::default());
+    let dirs = Arc::new(CyreneDirs::new(&cli.config)?);
     dirs.init_dirs()?;
     let cache_manager = Box::new(CyreneVersionCacheManager::new(&dirs.version_cache_path));
     let lockfile_manager = Box::new(CyreneLockfileManager::new(&dirs.lockfile_path()));
@@ -497,7 +499,7 @@ async fn start() -> Result<(), CyreneError> {
                 let lockfile_path = if let Some(path) = app_load_opts.lockfile {
                     PathBuf::from(path)
                 } else {
-                    PathBuf::from("cyrene.toml")
+                    PathBuf::from("cyrene.lock")
                 };
                 if !fs::exists(&lockfile_path)
                     .map_err(|e| CyreneError::LockfileLocalRead(lockfile_path.clone(), e))?
@@ -514,7 +516,6 @@ async fn start() -> Result<(), CyreneError> {
 
             Ok(())
         }
-        Commands::Env => actions.generate_env(),
     }
 }
 

@@ -215,41 +215,6 @@ impl CyreneManager {
 
         Ok(transactions)
     }
-    pub fn generate_env(&self) -> Result<(), CyreneError> {
-        // Write a shell script exporting cyrene's CYRENE_INSTALL_DIR
-        // Located in $XDG_CONFIG_HOME/cyrene/cyrene.sh
-        let mut env_file = self.dirs.config_dir.clone();
-        env_file.push("cyrene_env.sh");
-
-        let exists_before = fs::exists(&env_file).map_err(CyreneError::EnvCreate)?;
-
-        let script = format!(
-            "export CYRENE_INSTALL_DIR={}
-export CYRENE_APPS_DIR={}
-export CYRENE_PLUGINS_DIR={}",
-            &self.dirs.exe_dir.to_string_lossy(),
-            &self.dirs.apps_dir.to_string_lossy(),
-            &self.dirs.plugins_dir.to_string_lossy(),
-        );
-        fs::write(&env_file, &script).map_err(CyreneError::EnvWrite)?;
-
-        if !exists_before {
-            println!(
-                "Import the environment needed to enable managing cyrene with cyrene itself by {}:",
-                style("adding this line to your shell profile").fg(console::Color::Yellow)
-            );
-            println!();
-            println!("    source {}", env_file.to_string_lossy());
-            println!();
-            println!(
-                "To start using cyrene now, {}",
-                style("copy the line into your shell and run it.").fg(console::Color::Yellow)
-            );
-        }
-
-        Ok(())
-    }
-
     // Transactions
     pub async fn install_version(&self, name: &str, version: &str) -> Result<(), CyreneError> {
         let installation_path = self.dirs.ensure_installation_dir(name, version)?;
