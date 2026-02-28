@@ -12,6 +12,7 @@ pub struct CyreneDirs {
     pub config_dir: PathBuf,
     pub cache_dir: PathBuf,
     pub version_cache_path: PathBuf,
+    lockfile_path: PathBuf,
 }
 impl CyreneDirs {
     pub fn init_dirs(&self) -> Result<(), CyreneError> {
@@ -46,10 +47,7 @@ impl CyreneDirs {
         installation_dir
     }
     pub fn lockfile_path(&self) -> PathBuf {
-        let mut lockfile_path = self.config_dir.clone();
-        lockfile_path.push("cyrene.lock");
-
-        lockfile_path
+        self.lockfile_path.clone()
     }
 
     pub fn ensure_installation_dir(
@@ -120,9 +118,19 @@ impl CyreneDirs {
                 }
             }
         };
-        let cache_dir = proj_dirs.cache_dir().to_path_buf();
+        let cache_dir = if let Some(cache_dir) = &config.cache_dir {
+            cache_dir.clone()
+        } else {
+            proj_dirs.cache_dir().to_path_buf()
+        };
         let mut versions_cache_dir = cache_dir.clone();
         versions_cache_dir.push("versions.yaml");
+        let lockfile_path = {
+            let mut lockfile_path = config_dir.clone();
+            lockfile_path.push("cyrene.lock");
+
+            lockfile_path
+        };
         Ok(Self {
             apps_dir,
             plugins_dir,
@@ -130,6 +138,7 @@ impl CyreneDirs {
             exe_dir,
             cache_dir,
             version_cache_path: versions_cache_dir,
+            lockfile_path,
         })
     }
 }
