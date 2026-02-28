@@ -580,7 +580,6 @@ dependencies = [
  "jsonpath-rust",
  "log",
  "miette",
- "regex",
  "reqwest",
  "semver",
  "serde",

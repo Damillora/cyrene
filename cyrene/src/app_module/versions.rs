@@ -1,6 +1,5 @@
 use jsonpath_rust::JsonPath;
 use log::debug;
-use regex::Regex;
 use reqwest::header;
 use serde::Deserialize;
 use serde_json::Value;
@@ -17,25 +16,10 @@ struct GitHubVersion {
     prerelease: bool,
 }
 
-fn sanitize_version(ver: &str, ver_regex: &Regex) -> String {
-    let mut version = ver.to_string();
-    if let Some(captures) = ver_regex.captures(&version)
-        && let Some(ver_name) = captures.get(2)
-    {
-        version = String::from(ver_name.as_str())
-    } else if version.starts_with("v") {
-        version = version.trim_start_matches("v").to_string();
-    }
-
-    version
-}
-
 async fn process_github(
     repo: &str,
     command: &Option<Vec<AppVersionsGithubCommand>>,
 ) -> Result<Vec<String>, CyreneError> {
-    let ver_regex = Regex::new(r"(.*)-v?([0-9\.]*)").unwrap();
-
     let mut headers = header::HeaderMap::new();
     headers.insert("Accept", "application/vnd.github+json".parse().unwrap());
     headers.insert("X-GitHub-Api-Version", "2022-11-28".parse().unwrap());
