@@ -11,6 +11,7 @@ pub struct CyreneConfig {
     pub plugins_dir: Option<PathBuf>,
     pub install_dir: Option<PathBuf>,
     pub cache_dir: Option<PathBuf>,
+    pub lockfile_path: Option<PathBuf>,
 }
 
 impl CyreneConfig {
@@ -21,6 +22,7 @@ impl CyreneConfig {
                 plugins_dir: None,
                 install_dir: None,
                 cache_dir: None,
+                lockfile_path: None,
             };
             let config_toml = toml::ser::to_string(&config).map_err(CyreneError::ConfigSerialize)?;
             fs::write(config_path, config_toml).map_err(CyreneError::ConfigWrite)?;

@@ -80,7 +80,7 @@ impl CyreneDirs {
         let apps_dir = match std::env::var("CYRENE_APPS_DIR") {
             Ok(env) => PathBuf::from(env),
             Err(_) => {
-                if let Some(apps_dir) =  &config.apps_dir {
+                if let Some(apps_dir) = &config.apps_dir {
                     apps_dir.clone()
                 } else {
                     let mut data_dir = proj_dirs.data_dir().to_path_buf();
@@ -93,7 +93,7 @@ impl CyreneDirs {
         let plugins_dir = match std::env::var("CYRENE_PLUGINS_DIR") {
             Ok(env) => PathBuf::from(env),
             Err(_) => {
-                if let Some(plugins_dir) =  &config.plugins_dir {
+                if let Some(plugins_dir) = &config.plugins_dir {
                     plugins_dir.clone()
                 } else {
                     let mut data_dir = proj_dirs.data_dir().to_path_buf();
@@ -107,14 +107,14 @@ impl CyreneDirs {
         let exe_dir = match std::env::var("CYRENE_INSTALL_DIR") {
             Ok(env) => PathBuf::from(env),
             Err(_) => {
-                if let Some(install_dir) =  &config.install_dir {
+                if let Some(install_dir) = &config.install_dir {
                     install_dir.clone()
                 } else {
                     std::env::current_exe()
-                    .unwrap()
-                    .parent()
-                    .unwrap()
-                    .to_path_buf()
+                        .unwrap()
+                        .parent()
+                        .unwrap()
+                        .to_path_buf()
                 }
             }
         };
@@ -125,7 +125,9 @@ impl CyreneDirs {
         };
         let mut versions_cache_dir = cache_dir.clone();
         versions_cache_dir.push("versions.yaml");
-        let lockfile_path = {
+        let lockfile_path = if let Some(lockfile_path) = &config.lockfile_path {
+            lockfile_path.clone()
+        } else {
             let mut lockfile_path = config_dir.clone();
             lockfile_path.push("cyrene.lock");
 
