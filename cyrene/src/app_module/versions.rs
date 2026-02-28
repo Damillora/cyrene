@@ -7,7 +7,7 @@ use serde_json::Value;
 use url::Url;
 
 use crate::{
-    app::{AppVersions, AppVersionsUrlCommand},
+    app::{AppVersions, AppVersionsGithubCommand, AppVersionsUrlCommand},
     errors::CyreneError,
 };
 
@@ -30,7 +30,10 @@ fn sanitize_version(ver: &str, ver_regex: &Regex) -> String {
     version
 }
 
-async fn process_github(repo: &str) -> Result<Vec<String>, CyreneError> {
+async fn process_github(
+    repo: &str,
+    command: &Option<Vec<AppVersionsGithubCommand>>,
+) -> Result<Vec<String>, CyreneError> {
     let ver_regex = Regex::new(r"(.*)-v?([0-9\.]*)").unwrap();
 
     let mut headers = header::HeaderMap::new();
@@ -70,8 +73,7 @@ async fn process_github(repo: &str) -> Result<Vec<String>, CyreneError> {
             .filter(|f| !f.prerelease)
             .map(|f| {
                 debug!("found version: {}", f.tag_name);
-                let mut tag_name = f.tag_name.to_string();
-                tag_name = sanitize_version(&tag_name, &ver_regex);
+                let tag_name = f.tag_name.to_string();
                 tag_name
             })
             .collect();
@@ -81,7 +83,24 @@ async fn process_github(repo: &str) -> Result<Vec<String>, CyreneError> {
         versions.append(&mut a);
         page += 1;
     }
-
+    if let Some(command) = command {
+        for command in command {
+            match command {
+                AppVersionsGithubCommand::StripPrefix { prefix } => {
+                    versions = versions
+                        .iter()
+                        .map(|e| e.strip_prefix(prefix).unwrap_or("").to_string())
+                        .collect();
+                }
+                AppVersionsGithubCommand::Replace { str, with } => {
+                    versions = versions.iter().map(|e| e.replace(str, with)).collect();
+                }
+            }
+        }
+    }
+    versions = versions.iter().map(|e| {
+        sanitize_version(&e, &ver_regex)
+    }).collect();
     Ok(versions)
 }
 
@@ -142,7 +161,7 @@ async fn process_url(
 
 pub async fn process_version(versions: &AppVersions) -> Result<Vec<String>, CyreneError> {
     match versions {
-        AppVersions::Github { repo } => process_github(repo).await,
+        AppVersions::Github { repo, command } => process_github(repo, command).await,
         AppVersions::Url { url, command } => process_url(url, command).await,
     }
 }
@@ -157,6 +176,7 @@ mod tests {
     async fn test_github() {
         let version = AppVersions::Github {
             repo: "Damillora/cyrene".to_string(),
+            command: None,
         };
         let result = process_version(&version).await;
 

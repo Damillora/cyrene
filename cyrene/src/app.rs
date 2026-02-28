@@ -26,12 +26,20 @@ pub struct AppSettings {
 pub enum AppVersions {
     Github {
         repo: String,
+        command: Option<Vec<AppVersionsGithubCommand>>,
     },
     Url {
         url: Url,
         command: Vec<AppVersionsUrlCommand>,
     },
 }
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AppVersionsGithubCommand {
+    StripPrefix { prefix: String },
+    Replace { str: String, with: String},
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AppVersionsUrlCommand {
