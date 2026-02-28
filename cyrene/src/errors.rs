@@ -67,10 +67,6 @@ pub enum CyreneError {
     LockfileNotFoundError(PathBuf),
     #[error("Unable to remove {0} version {1}: {2}")]
     AppRemove(String, String, std::io::Error),
-    #[error("Unable to initialize Cyrene environment")]
-    EnvCreate(std::io::Error),
-    #[error("Unable to write Cyrene environment")]
-    EnvWrite(std::io::Error),
     #[error("Non existent app {0} version {1} in lockfile")]
     LockfileAppVersion(String, String),
     #[error("Unable to read config: {0}")]

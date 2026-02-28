@@ -5,7 +5,6 @@ use std::{
     sync::Arc,
 };
 
-use console::style;
 use log::debug;
 use semver::Version;
 
