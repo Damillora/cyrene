@@ -114,7 +114,7 @@ impl CyreneApp {
     }
 
     pub fn upgrade_latest(&self) -> bool {
-        todo!()
+        self.settings.upgrade_latest
     }
 }
 

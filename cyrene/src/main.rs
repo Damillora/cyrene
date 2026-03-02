@@ -568,7 +568,7 @@ async fn app_upgrade(
         ))?;
         let upgrade_latest = actions.check_upgrade_latest(&app.name)?;
         let new_version = if upgrade_latest {
-            actions.get_latest_major_release(&app.name, "*").await?
+            Some(actions.get_latest_version(&app.name).await?)
         } else {
             actions
                 .get_latest_major_release(&app.name, &old_version)

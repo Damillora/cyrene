@@ -36,9 +36,10 @@ pub fn search_in_version(
         {
             return Some(ver.to_string());
         }
+    } else if version_range == "*" {
+        return versions.first().map(String::from);
     } else if let Some(ver) = versions.iter().find(|e| e.as_str() == version_range) {
         return Some(ver.clone());
     }
-
     None
 }
