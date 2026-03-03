@@ -1,17 +1,21 @@
 use std::sync::Arc;
 
 use console::{Color, style};
+use log::debug;
 
 use crate::{errors::CyreneError, manager::CyreneManager};
 
+#[derive(Debug)]
 struct AppActionCommand {
     app: String,
     version: String,
 }
+#[derive(Debug)]
 enum AppRemoveActionCommand {
     Remove { app: String, version: String },
     RemoveAll { app: String },
 }
+#[derive(Debug)]
 enum AppFinishActionCommand {
     LockfileUpdate {
         app: String,
@@ -110,6 +114,10 @@ impl TransactionExecutor {
     }
 
     pub async fn execute(&self) -> Result<bool, CyreneError> {
+        debug!("Install commands: {:?}", self.install.iter());
+        debug!("Post-install commands: {:?}", self.post_install.iter());
+        debug!("Finish commands: {:?}", self.finish.iter());
+        debug!("Remove commands: {:?}", self.remove.iter());
         let install = self.install.iter();
         for install in install {
             println!(
@@ -131,6 +139,23 @@ impl TransactionExecutor {
             self.manager
                 .post_install_version(&post_install.app, &post_install.version)
                 .await?;
+        }
+        let remove = self.remove.iter();
+        for remove in remove {
+            match remove {
+                AppRemoveActionCommand::Remove { app, version } => {
+                    println!(
+                        "Removing {} version {}",
+                        style(&app).fg(Color::Color256(219)).bold(),
+                        style(&version).fg(Color::Green).bold(),
+                    );
+                    self.manager.uninstall_version(app, version)?;
+                }
+                AppRemoveActionCommand::RemoveAll { app } => {
+                    println!("Removing {}", style(&app).fg(Color::Color256(219)).bold(),);
+                    self.manager.uninstall_all(app)?;
+                }
+            }
         }
         let finish = self.finish.iter();
         for finish in finish {
@@ -162,23 +187,6 @@ impl TransactionExecutor {
                         style(&app).fg(Color::Color256(219)).bold()
                     );
                     self.manager.unlink_binaries(app)?;
-                }
-            }
-        }
-        let remove = self.remove.iter();
-        for remove in remove {
-            match remove {
-                AppRemoveActionCommand::Remove { app, version } => {
-                    println!(
-                        "Removing {} version {}",
-                        style(&app).fg(Color::Color256(219)).bold(),
-                        style(&version).fg(Color::Green).bold(),
-                    );
-                    self.manager.uninstall_version(app, version)?;
-                }
-                AppRemoveActionCommand::RemoveAll { app } => {
-                    println!("Removing {}", style(&app).fg(Color::Color256(219)).bold(),);
-                    self.manager.uninstall_all(app)?;
                 }
             }
         }

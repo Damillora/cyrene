@@ -634,9 +634,8 @@ async fn app_upgrade(
                     app: app_action.name.clone(),
                     version: app_action.old_version.clone(),
                 });
-
-                transactions.execute().await?;
             }
+            transactions.execute().await?;
         } else {
             println!("{}", style("Aborted").fg(console::Color::Red))
         }

@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.2] - 2026-03-03
 
 ### Fixed
-- Order remove actions after finished installs
+- Upgrade transaction running multiple times
 - Always overwrite links on upgrade
 - Implement missing functions for non-semver version compares
 
