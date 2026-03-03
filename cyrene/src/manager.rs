@@ -321,6 +321,11 @@ impl CyreneManager {
                     exe_path.to_string_lossy(),
                     canonical_path.to_string_lossy()
                 );
+                if overwrite {
+                    fs::remove_file(&exe_path).map_err(|e| {
+                        CyreneError::AppLinkRemove(exe_path.to_string_lossy().to_string(), e)
+                    })?;
+                }
                 symlink::symlink_file(&canonical_path, &exe_path).map_err(|e| {
                     CyreneError::AppLinkCreate(
                         exe_path.to_string_lossy().to_string(),
