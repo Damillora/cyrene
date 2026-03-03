@@ -617,10 +617,6 @@ async fn app_upgrade(
         {
             let mut transactions = TransactionExecutor::new(actions.clone());
             for app_action in app_actions.iter() {
-                let current_installed = actions.find_installed_version(&app_action.name)?.ok_or(
-                    CyreneError::LockfileAppVersion(app_action.name.to_string(), "".to_string()),
-                )?;
-                let overwrite_installed = current_installed.eq(&app_action.old_version);
                 transactions.add(TransactionCommands::Install {
                     app: app_action.name.clone(),
                     version: app_action.new_version.clone(),
@@ -628,7 +624,7 @@ async fn app_upgrade(
                 transactions.add(TransactionCommands::Link {
                     app: app_action.name.clone(),
                     version: app_action.new_version.clone(),
-                    overwrite: overwrite_installed,
+                    overwrite: true,
                 });
                 transactions.add(TransactionCommands::LockfileUpdate {
                     app: app_action.name.clone(),
