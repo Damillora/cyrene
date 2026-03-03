@@ -59,7 +59,7 @@ pub enum CyreneError {
     AppLinkRead(String, std::io::Error),
     #[error("Unable to remove link in {0}: {1}")]
     AppLinkRemove(String, std::io::Error),
-    #[error("Unable to link {0} to {1}: {1}")]
+    #[error("Unable to link {0} to {1}: {2}")]
     AppLinkCreate(String, String, std::io::Error),
     #[error("Cannot find lockfile at {0}")]
     LockfileNotFoundError(PathBuf),

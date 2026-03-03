@@ -132,23 +132,6 @@ impl TransactionExecutor {
                 .post_install_version(&post_install.app, &post_install.version)
                 .await?;
         }
-        let remove = self.remove.iter();
-        for remove in remove {
-            match remove {
-                AppRemoveActionCommand::Remove { app, version } => {
-                    println!(
-                        "Removing {} version {}",
-                        style(&app).fg(Color::Color256(219)).bold(),
-                        style(&version).fg(Color::Green).bold(),
-                    );
-                    self.manager.uninstall_version(app, version)?;
-                }
-                AppRemoveActionCommand::RemoveAll { app } => {
-                    println!("Removing {}", style(&app).fg(Color::Color256(219)).bold(),);
-                    self.manager.uninstall_all(app)?;
-                }
-            }
-        }
         let finish = self.finish.iter();
         for finish in finish {
             match finish {
@@ -179,6 +162,23 @@ impl TransactionExecutor {
                         style(&app).fg(Color::Color256(219)).bold()
                     );
                     self.manager.unlink_binaries(app)?;
+                }
+            }
+        }
+        let remove = self.remove.iter();
+        for remove in remove {
+            match remove {
+                AppRemoveActionCommand::Remove { app, version } => {
+                    println!(
+                        "Removing {} version {}",
+                        style(&app).fg(Color::Color256(219)).bold(),
+                        style(&version).fg(Color::Green).bold(),
+                    );
+                    self.manager.uninstall_version(app, version)?;
+                }
+                AppRemoveActionCommand::RemoveAll { app } => {
+                    println!("Removing {}", style(&app).fg(Color::Color256(219)).bold(),);
+                    self.manager.uninstall_all(app)?;
                 }
             }
         }
